@@ -17,6 +17,10 @@ const categorySchema = new mongoose.Schema(
       enum: ["income", "expense"],
       required: true,
     },
+    isDefault: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { UserRound, Mail, BadgeCheck } from "lucide-react";
 import { addUser, removeUser } from "../store/userSlice";
-import axios from "axios";
+import api from "../api/client";
 import toast from "react-hot-toast";
 
 const validateEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -154,11 +154,7 @@ const Profile = () => {
       setIsEditLoading(true);
       setEditError("");
 
-      const res = await axios.put(
-        "/api/user/profile",
-        { userName, email },
-        { withCredentials: true }
-      );
+      const res = await api.put("/user/profile", { userName, email });
 
       const updatedUser = res.data?.user;
       if (!updatedUser) throw new Error("Invalid server response");

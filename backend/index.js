@@ -20,6 +20,7 @@ const {
   getLoans,
 } = require("./controllers/loanController");
 const { recalculateAccountBalance } = require("./utils/accountBalance");
+const { ensureDefaultCategories } = require("./utils/defaultCategories");
 
 const app = express();
 
@@ -45,7 +46,19 @@ const isTransferLikeTxn = (txn) => {
 
 app.use(
   cors({
-    origin: true, // Always reflect request origin (localhost:5173 or 5174)
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        process.env.FRONTEND_URL,
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5173",
+      ].filter(Boolean);
+
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -113,6 +126,8 @@ app.post("/signup", async (req, res) => {
     console.log("✅ User saved successfully!");
     console.log("🆔 Saved user ID:", savedUser._id);
     console.log("📊 Database:", mongoose.connection.name);
+
+    await ensureDefaultCategories(savedUser._id);
 
     res.status(201).json({
       message: "User created successfully",
@@ -354,18 +369,7 @@ app.patch("/account/:id", userAuth, async (req, res) => {
 /* ================= DELETE ACCOUNT ================= */
 app.delete("/accountdelete/:id", userAuth, async (req, res) => {
   try {
-    const existingTxn = await Transaction.findOne({
-      user_id: req.userId,
-      account_id: req.params.id,
-    }).lean();
-    if (existingTxn) {
-      return res.status(400).json({
-        message:
-          "Account has transaction history. Delete related transactions first.",
-      });
-    }
-
-    const account = await Account.findOneAndDelete({
+    const account = await Account.findOne({
       _id: req.params.id,
       userId: req.userId,
     });
@@ -374,7 +378,32 @@ app.delete("/accountdelete/:id", userAuth, async (req, res) => {
       return res.status(404).json({ message: "Account not found" });
     }
 
-    res.status(200).json({ message: "Account deleted successfully" });
+    const linkedLoan = await Loan.findOne({
+      userId: req.userId,
+      accountId: req.params.id,
+      status: "ACTIVE",
+    });
+    if (linkedLoan) {
+      return res.status(400).json({
+        message:
+          "This account is linked to an active loan. Close or reassign the loan first.",
+      });
+    }
+
+    await Transaction.deleteMany({
+      user_id: req.userId,
+      account_id: req.params.id,
+    });
+
+    await Account.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.userId,
+    });
+
+    res.status(200).json({
+      message: "Account deleted successfully",
+      deletedId: req.params.id,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -397,14 +426,18 @@ app.post("/category", userAuth, async (req, res) => {
 });
 
 app.get("/get/categories", userAuth, async (req, res) => {
-  const categories = await Category.find({
-    $or: [
-      { userId: req.userId }, // user categories
-      { isDefault: true }, // system categories
-    ],
-  });
+  try {
+    await ensureDefaultCategories(req.userId);
 
-  res.json({ data: categories });
+    const categories = await Category.find({ userId: req.userId }).sort({
+      type: 1,
+      name: 1,
+    });
+
+    res.json({ data: categories });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.patch("/categoryupdate/:id", userAuth, async (req, res) => {

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import axios from "axios";
+import api from "../api/client";
 import { useNavigate } from "react-router-dom";
 
 const AddAccount = () => {
@@ -22,9 +22,7 @@ const AddAccount = () => {
     e.preventDefault();
 
     try {
-      await axios.post("/api/account", form, {
-        withCredentials: true,
-      });
+      await api.post("/account", form);
 
       alert("Account created successfully");
 

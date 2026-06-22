@@ -25,5 +25,5 @@ export default defineConfig({
       },
     },
   },
-  base: env.NODE_ENV === "production" ? "./" : "/",
+  base: "/",
 });

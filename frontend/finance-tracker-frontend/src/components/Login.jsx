@@ -172,7 +172,7 @@ import { Lock, Eye } from "lucide-react";
 import { useRef, useState } from "react";
 import { useDispatch } from "react-redux";
 import { addUser } from "../store/userSlice";
-import axios from "axios";
+import api from "../api/client";
 
 const Login = () => {
   const [isSignedInForm, SetIsSignedInForm] = useState(true);
@@ -200,15 +200,11 @@ const Login = () => {
     try {
       if (isSignedInForm) {
         // 🔹 LOGIN API
-        const res = await axios.post(
-          "/api/login",
-          {
-            email: emailValue,
-            password: passwordValue,
-          },
-          { withCredentials: true }
-        );
-        dispatch(addUser(res.data));
+        const res = await api.post("/login", {
+          email: emailValue,
+          password: passwordValue,
+        });
+        dispatch(addUser(res.data?.existingUser || res.data));
 
         console.log("Login success:", res.data);
         navigate("/dashboard");
@@ -221,15 +217,11 @@ const Login = () => {
           return;
         }
 
-        const res = await axios.post(
-          "/api/signup",
-          {
-            userName: nameValue,
-            email: emailValue,
-            password: passwordValue,
-          },
-          { withCredentials: true }
-        );
+        const res = await api.post("/signup", {
+          userName: nameValue,
+          email: emailValue,
+          password: passwordValue,
+        });
 
         console.log("Signup success:", res.data);
 
@@ -321,7 +313,7 @@ import {
 } from "lucide-react";
 import { useDispatch } from "react-redux";
 import { addUser } from "../store/userSlice";
-import axios from "axios";
+import api from "../api/client";
 
 const Login = () => {
   const [isSignedInForm, setIsSignedInForm] = useState(true);
@@ -375,17 +367,9 @@ const Login = () => {
     try {
       if (isSignedInForm) {
         // Sign In
-        const res = await axios({
-          method: "post",
-          url: "/api/login",
-          data: {
-            email: emailValue,
-            password: passwordValue,
-          },
-          withCredentials: true,
-          headers: {
-            "Content-Type": "application/json",
-          },
+        const res = await api.post("/login", {
+          email: emailValue,
+          password: passwordValue,
         });
 
         // Dispatch user to redux store
@@ -405,17 +389,11 @@ const Login = () => {
           return;
         }
 
-        const res = await axios.post(
-          "/api/signup",
-          {
-            userName: nameValue,
-            email: emailValue,
-            password: passwordValue,
-          },
-          {
-            withCredentials: true,
-          }
-        );
+        const res = await api.post("/signup", {
+          userName: nameValue,
+          email: emailValue,
+          password: passwordValue,
+        });
 
         // Automatically switch to Sign In form after successful signup
         setIsSignedInForm(true);

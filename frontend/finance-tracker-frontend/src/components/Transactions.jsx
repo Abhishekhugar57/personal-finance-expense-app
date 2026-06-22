@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect, useState } from "react";
-import axios from "axios";
+import api from "../api/client";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
@@ -385,10 +385,7 @@ const Transactions = () => {
   const fetchTransactions = async () => {
     try {
       setLoading(true);
-      const res = await axios.get(
-        `/api/transactions?page=${page}&limit=${limit}`,
-        { withCredentials: true }
-      );
+      const res = await api.get(`/transactions?page=${page}&limit=${limit}`);
       setTransactions(res.data || []);
     } catch (err) {
       console.error(err);
@@ -404,9 +401,7 @@ const Transactions = () => {
   const fetchCategories = async () => {
     try {
       setCategoriesLoading(true);
-      const res = await axios.get("/api/get/categories", {
-        withCredentials: true,
-      });
+      const res = await api.get("/get/categories");
       setCategories(res.data?.data || res.data || []);
     } catch (err) {
       console.error(err);
@@ -452,11 +447,7 @@ const Transactions = () => {
         date,
       };
 
-      const res = await axios.put(
-        `/api/transactions/${editTransaction._id}`,
-        payload,
-        { withCredentials: true }
-      );
+      const res = await api.put(`/transactions/${editTransaction._id}`, payload);
 
       const updated = res.data;
       setTransactions((prev) =>
@@ -484,9 +475,7 @@ const Transactions = () => {
       return;
 
     try {
-      await axios.delete(`/api/transactions/${id}`, {
-        withCredentials: true,
-      });
+      await api.delete(`/transactions/${id}`);
       fetchTransactions();
       window.dispatchEvent(new Event("finance-data-changed"));
     } catch (err) {

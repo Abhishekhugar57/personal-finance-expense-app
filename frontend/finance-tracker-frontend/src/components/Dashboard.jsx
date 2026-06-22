@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
-import axios from "axios";
+import api from "../api/client";
 import SummaryCards from "./dashboard/SummaryCard";
 import IncomeExpenseChart from "./dashboard/IncomeExpChart";
 import ExpensePie from "./dashboard/ExpensePie";
@@ -37,8 +37,8 @@ const Dashboard = () => {
       if (!silent) setLoading(true);
       setError("");
       const [overviewRes, loansRes] = await Promise.all([
-        axios.get("/api/dashboard/overview", { withCredentials: true }),
-        axios.get("/api/get/loan", { withCredentials: true }),
+        api.get("/dashboard/overview"),
+        api.get("/get/loan"),
       ]);
       setData(overviewRes.data);
       setLoans(loansRes.data || []);
