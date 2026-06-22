@@ -276,6 +276,8 @@ app.post("/account", userAuth, async (req, res) => {
     const { name, type, balance = 0 } = req.body;
     const userId = req.userId;
 
+    await ensureDefaultCategories(userId);
+
     // 1️⃣ Create Account
     const account = new Account({
       userId,

@@ -16,12 +16,23 @@ const DEFAULT_CATEGORIES = [
   { name: "Other Expense", type: "expense" },
 ];
 
+const categoryKey = (type, name) =>
+  `${String(type).toLowerCase()}::${String(name).trim().toLowerCase()}`;
+
 async function ensureDefaultCategories(userId) {
-  const existingCount = await Category.countDocuments({ userId });
-  if (existingCount > 0) return;
+  const existing = await Category.find({ userId }).select("name type").lean();
+  const existingKeys = new Set(
+    existing.map((category) => categoryKey(category.type, category.name))
+  );
+
+  const missing = DEFAULT_CATEGORIES.filter(
+    (category) => !existingKeys.has(categoryKey(category.type, category.name))
+  );
+
+  if (missing.length === 0) return;
 
   await Category.insertMany(
-    DEFAULT_CATEGORIES.map((category) => ({
+    missing.map((category) => ({
       ...category,
       userId,
       isDefault: true,
