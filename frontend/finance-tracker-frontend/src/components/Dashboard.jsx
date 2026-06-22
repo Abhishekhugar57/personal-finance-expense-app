@@ -13,6 +13,7 @@ const Dashboard = () => {
   const [data, setData] = useState(null);
   const [loans, setLoans] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [filter, setFilter] = useState("last3Months");
 
   const user = useSelector((state) => state.user); // ✅ ADD THIS
@@ -22,8 +23,19 @@ const Dashboard = () => {
     fetchDashboard();
   }, [user]);
 
-  const fetchDashboard = async () => {
+  useEffect(() => {
+    if (!user) return undefined;
+    const handleFinanceRefresh = () => fetchDashboard({ silent: true });
+    window.addEventListener("finance-data-changed", handleFinanceRefresh);
+    return () => {
+      window.removeEventListener("finance-data-changed", handleFinanceRefresh);
+    };
+  }, [user]);
+
+  const fetchDashboard = async ({ silent = false } = {}) => {
     try {
+      if (!silent) setLoading(true);
+      setError("");
       const [overviewRes, loansRes] = await Promise.all([
         axios.get("/api/dashboard/overview", { withCredentials: true }),
         axios.get("/api/get/loan", { withCredentials: true }),
@@ -32,8 +44,9 @@ const Dashboard = () => {
       setLoans(loansRes.data || []);
     } catch (error) {
       console.error("Dashboard error:", error);
+      setError("Failed to load dashboard data.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -94,10 +107,6 @@ const Dashboard = () => {
       return true;
     });
 
-    const openingBalance = filteredTransactions
-      .filter((t) => t.type === "income" && isOpeningBalanceTxn(t))
-      .reduce((acc, t) => acc + Number(t.amount || 0), 0);
-
     const income = filteredTransactions
       .filter((t) => t.type === "income" && !isOpeningBalanceTxn(t))
       .reduce((acc, t) => acc + Number(t.amount || 0), 0);
@@ -107,7 +116,6 @@ const Dashboard = () => {
       .reduce((acc, t) => acc + Number(t.amount || 0), 0);
 
     const savings = income - expense;
-    const totalBalance = Math.max(0, openingBalance + income - expense);
 
     const monthlyMap = {};
     const categoryMap = {};
@@ -152,7 +160,7 @@ const Dashboard = () => {
 
     return {
       ...data,
-      totalBalance,
+      totalBalance: Number(data.totalBalance || 0),
       income,
       expense,
       savings,
@@ -172,10 +180,10 @@ const Dashboard = () => {
     );
   }
 
-  if (!data || !filteredOverview) {
+  if (!data || !filteredOverview || error) {
     return (
       <div className="flex items-center justify-center min-h-[60vh] text-gray-500">
-        Failed to load dashboard.
+        {error || "Failed to load dashboard."}
       </div>
     );
   }

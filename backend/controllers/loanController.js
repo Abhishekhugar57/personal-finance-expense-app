@@ -3,6 +3,7 @@ const Account = require("../models/account");
 const Category = require("../models/category");
 const Transaction = require("../models/transaction");
 const { applyMonthlyInterest, computeDueDate } = require("../utils/loanInterest");
+const { recalculateAccountBalance } = require("../utils/accountBalance");
 
 async function getOrCreateLoanCategory({ userId, type }) {
   const name = "Loan";
@@ -68,11 +69,7 @@ async function createTransactionAndUpdateBalance({
     linkedLoanId: linkedLoanId || null,
   });
 
-  account.balance =
-    type === "expense"
-      ? currentBalance - numericAmount
-      : currentBalance + numericAmount;
-  await account.save();
+  await recalculateAccountBalance({ userId, accountId });
 
   return txn;
 }

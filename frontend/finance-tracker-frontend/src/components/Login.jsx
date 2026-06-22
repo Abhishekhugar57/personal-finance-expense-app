@@ -338,6 +338,14 @@ const Login = () => {
 
   const validateEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
+  const getApiErrorMessage = (err, fallback = "Something went wrong.") => {
+    const data = err?.response?.data;
+    if (typeof data === "string" && data.trim()) return data;
+    if (data?.message) return data.message;
+    if (data?.error) return data.error;
+    return fallback;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrMessage("");
@@ -414,7 +422,7 @@ const Login = () => {
         setErrMessage("Account created successfully. Please sign in.");
       }
     } catch (err) {
-      setErrMessage(err.response?.data?.message || "Something went wrong.");
+      setErrMessage(getApiErrorMessage(err));
     } finally {
       setLoading(false);
     }

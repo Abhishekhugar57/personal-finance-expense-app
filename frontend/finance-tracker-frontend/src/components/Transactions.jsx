@@ -462,6 +462,7 @@ const Transactions = () => {
       setTransactions((prev) =>
         prev.map((txn) => (txn._id === updated._id ? updated : txn))
       );
+      window.dispatchEvent(new Event("finance-data-changed"));
 
       toast.success("Transaction updated");
       closeEdit();
@@ -487,6 +488,7 @@ const Transactions = () => {
         withCredentials: true,
       });
       fetchTransactions();
+      window.dispatchEvent(new Event("finance-data-changed"));
     } catch (err) {
       console.error(err);
     }

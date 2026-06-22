@@ -19,8 +19,29 @@ const {
   repayLoan,
   getLoans,
 } = require("./controllers/loanController");
+const { recalculateAccountBalance } = require("./utils/accountBalance");
 
 const app = express();
+
+const parseMonthRange = (month) => {
+  const normalizedMonth =
+    typeof month === "string" && /^\d{4}-\d{2}$/.test(month)
+      ? month
+      : new Date().toISOString().slice(0, 7);
+  const start = new Date(`${normalizedMonth}-01T00:00:00.000Z`);
+  if (Number.isNaN(start.getTime())) return null;
+  const end = new Date(start);
+  end.setUTCMonth(end.getUTCMonth() + 1);
+  return { start, end };
+};
+
+const isTransferLikeTxn = (txn) => {
+  const note = String(txn?.note || "").trim().toLowerCase();
+  const categoryName = String(txn?.category_id?.name || "")
+    .trim()
+    .toLowerCase();
+  return note.startsWith("transfer") || categoryName === "transfer";
+};
 
 app.use(
   cors({
@@ -49,19 +70,28 @@ connectDb();
 app.get("/", (req, res) => {
   res.send("API is running...");
 });
+const findUserByEmail = (email) => {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail) return null;
+  return User.findOne({
+    $expr: { $eq: [{ $toLower: "$email" }, normalizedEmail] },
+  });
+};
+
 app.post("/signup", async (req, res) => {
   try {
     console.log("🔍 SIGNUP REQUEST RECEIVED");
     console.log("📝 Request body:", req.body);
 
     const { userName, email, password } = req.body;
-    console.log("📧 Extracted email:", email);
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    console.log("📧 Extracted email:", normalizedEmail);
     console.log("👤 Extracted username:", userName);
 
     const hashedPassword = await bcrypt.hash(password, 10);
     console.log("🔐 Password hashed");
 
-    const existingUser = await User.findOne({ email });
+    const existingUser = await findUserByEmail(normalizedEmail);
     console.log(
       "🔍 Existing user check:",
       existingUser ? "Found" : "Not found"
@@ -74,7 +104,7 @@ app.post("/signup", async (req, res) => {
 
     const user = new User({
       userName,
-      email,
+      email: normalizedEmail,
       password: hashedPassword,
     });
 
@@ -97,8 +127,17 @@ app.post("/signup", async (req, res) => {
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    const existingUser = await User.findOne({ email });
-    if (!existingUser) return res.status(401).send("please signup");
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+
+    if (!normalizedEmail || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
+    }
+
+    const existingUser = await findUserByEmail(normalizedEmail);
+    if (!existingUser) {
+      return res.status(401).json({ message: "No account found. Please sign up first." });
+    }
+
     const isPasswordValid = await bcrypt.compare(
       password,
       existingUser.password
@@ -106,6 +145,11 @@ app.post("/login", async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
+
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ message: "Server auth configuration error" });
+    }
+
     const token = jwt.sign(
       { userId: existingUser._id },
       process.env.JWT_SECRET,
@@ -123,7 +167,8 @@ app.post("/login", async (req, res) => {
       existingUser,
     });
   } catch (err) {
-    console.log("err", err.message);
+    console.error("Login error:", err.message);
+    return res.status(500).json({ message: "Login failed. Please try again." });
   }
 });
 /* ================= CREATE ACCOUNT ================= */
@@ -283,6 +328,13 @@ app.get("/get/account", userAuth, async (req, res) => {
 /* ================= UPDATE ACCOUNT ================= */
 app.patch("/account/:id", userAuth, async (req, res) => {
   try {
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "balance")) {
+      return res.status(400).json({
+        message:
+          "Direct balance updates are not allowed. Update balances through transactions.",
+      });
+    }
+
     const account = await Account.findOneAndUpdate(
       { _id: req.params.id, userId: req.userId },
       req.body,
@@ -302,6 +354,17 @@ app.patch("/account/:id", userAuth, async (req, res) => {
 /* ================= DELETE ACCOUNT ================= */
 app.delete("/accountdelete/:id", userAuth, async (req, res) => {
   try {
+    const existingTxn = await Transaction.findOne({
+      user_id: req.userId,
+      account_id: req.params.id,
+    }).lean();
+    if (existingTxn) {
+      return res.status(400).json({
+        message:
+          "Account has transaction history. Delete related transactions first.",
+      });
+    }
+
     const account = await Account.findOneAndDelete({
       _id: req.params.id,
       userId: req.userId,
@@ -421,15 +484,9 @@ app.post("/transactions", userAuth, async (req, res) => {
       transaction_date,
     });
 
-    // 5️⃣ Update balance safely
-    account.balance =
-      type === "expense"
-        ? currentBalance - numericAmount
-        : currentBalance + numericAmount;
-
-    // 6️⃣ Save both
+    // 5️⃣ Save transaction and recalculate canonical balance from history
     await transaction.save();
-    await account.save();
+    await recalculateAccountBalance({ userId, accountId: account_id });
 
     res.status(201).json(transaction);
   } catch (err) {
@@ -545,13 +602,6 @@ app.put("/transactions/:id", userAuth, async (req, res) => {
       return res.status(400).json({ error: "Insufficient balance" });
     }
 
-    const balanceAfter =
-      transaction.type === "expense"
-        ? balanceBeforeOld - updatedAmount
-        : balanceBeforeOld + updatedAmount;
-
-    account.balance = balanceAfter;
-
     const updated = await Transaction.findByIdAndUpdate(
       id,
       {
@@ -569,7 +619,10 @@ app.put("/transactions/:id", userAuth, async (req, res) => {
       return res.status(404).json({ message: "Transaction not found" });
     }
 
-    await account.save();
+    await recalculateAccountBalance({
+      userId: req.userId,
+      accountId: transaction.account_id,
+    });
     await updated.populate("category_id", "name type");
 
     return res.json(updated);
@@ -587,17 +640,16 @@ app.delete("/transactions/:id", userAuth, async (req, res) => {
     });
     if (!transaction) throw new Error("Transaction not found");
 
-    const account = await Account.findById(transaction.account_id);
+    const account = await Account.findOne({
+      _id: transaction.account_id,
+      userId: req.userId,
+    });
     if (!account) throw new Error("Account not found");
-
-    // Rollback balance
-    account.balance =
-      transaction.type === "expense"
-        ? account.balance + transaction.amount
-        : account.balance - transaction.amount;
-
-    await account.save();
     await transaction.deleteOne();
+    await recalculateAccountBalance({
+      userId: req.userId,
+      accountId: transaction.account_id,
+    });
 
     res.json({ message: "Transaction deleted successfully" });
   } catch (err) {
@@ -685,9 +737,11 @@ app.get("/dashboard/accounts", userAuth, async (req, res) => {
 app.get("/dashboard/income-expense", userAuth, async (req, res) => {
   try {
     const { month } = req.query; // YYYY-MM
-    const start = new Date(`${month}-01`);
-    const end = new Date(start);
-    end.setMonth(end.getMonth() + 1);
+    const range = parseMonthRange(month);
+    if (!range) {
+      return res.status(400).json({ message: "Invalid month format" });
+    }
+    const { start, end } = range;
 
     const summary = await Transaction.aggregate([
       {
@@ -725,9 +779,11 @@ app.get("/dashboard/income-expense", userAuth, async (req, res) => {
 app.get("/dashboard/category-breakdown", userAuth, async (req, res) => {
   try {
     const { month } = req.query;
-    const start = new Date(`${month}-01`);
-    const end = new Date(start);
-    end.setMonth(end.getMonth() + 1);
+    const range = parseMonthRange(month);
+    if (!range) {
+      return res.status(400).json({ message: "Invalid month format" });
+    }
+    const { start, end } = range;
 
     const breakdown = await Transaction.aggregate([
       {
@@ -800,7 +856,6 @@ app.get("/dashboard/loan-summary", userAuth, async (req, res) => {
 app.get("/dashboard/overview", userAuth, async (req, res) => {
   try {
     const userId = req.userId;
-    console.log("Logged in userId:", req.userId);
     /* =========================
        1️⃣ TOTAL BALANCE
     ========================== */
@@ -837,10 +892,12 @@ app.get("/dashboard/overview", userAuth, async (req, res) => {
           .trim()
           .toLowerCase() === "opening balance";
 
-      // Income & Expense calculation
-      if (txn.type === "income" && !isOpeningBalance) {
+      const isTransfer = isTransferLikeTxn(txn);
+
+      // Income & Expense calculation (exclude transfer-like entries from totals)
+      if (txn.type === "income" && !isOpeningBalance && !isTransfer) {
         income += amount;
-      } else if (txn.type === "expense") {
+      } else if (txn.type === "expense" && !isTransfer) {
         expense += amount;
       }
 
@@ -860,16 +917,16 @@ app.get("/dashboard/overview", userAuth, async (req, res) => {
         };
       }
 
-      if (txn.type === "income" && !isOpeningBalance) {
+      if (txn.type === "income" && !isOpeningBalance && !isTransfer) {
         monthlyMap[monthKey].income += amount;
-      } else if (txn.type === "expense") {
+      } else if (txn.type === "expense" && !isTransfer) {
         monthlyMap[monthKey].expense += amount;
       }
 
       /* =========================
          Category Breakdown
       ========================== */
-      if (txn.type === "expense") {
+      if (txn.type === "expense" && !isTransfer) {
         const categoryName = txn.category_id?.name || "Other";
 
         if (!categoryMap[categoryName]) {

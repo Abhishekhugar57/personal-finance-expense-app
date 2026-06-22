@@ -23,6 +23,14 @@ const Accounts = () => {
     fetchAccounts();
   }, []);
 
+  useEffect(() => {
+    const handleFinanceRefresh = () => fetchAccounts();
+    window.addEventListener("finance-data-changed", handleFinanceRefresh);
+    return () => {
+      window.removeEventListener("finance-data-changed", handleFinanceRefresh);
+    };
+  }, []);
+
   const deleteAccount = async (id) => {
     if (!window.confirm("Are you sure you want to delete this account?"))
       return;
@@ -33,6 +41,7 @@ const Accounts = () => {
       });
 
       fetchAccounts();
+      window.dispatchEvent(new Event("finance-data-changed"));
     } catch (err) {
       console.error("Delete failed", err);
     }

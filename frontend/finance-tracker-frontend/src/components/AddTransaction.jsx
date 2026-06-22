@@ -76,6 +76,7 @@ const AddTransaction = () => {
         withCredentials: true,
       });
 
+      window.dispatchEvent(new Event("finance-data-changed"));
       navigate("/transactions");
     } catch (err) {
       alert(err.response?.data?.error || "Something went wrong");
