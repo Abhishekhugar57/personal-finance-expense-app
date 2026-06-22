@@ -94,7 +94,10 @@ const AddTransaction = () => {
   };
 
   const filteredCategories = useMemo(
-    () => categories.filter((cat) => cat.type === formData.type),
+    () =>
+      categories.filter(
+        (cat) => String(cat.type || "").toLowerCase() === formData.type
+      ),
     [categories, formData.type]
   );
 
@@ -183,10 +186,17 @@ const AddTransaction = () => {
                 </button>
               </div>
             ) : null}
-            {!categoriesError && filteredCategories.length === 0 ? (
+            {!categoriesError && categories.length === 0 ? (
               <p className="mt-1 text-sm text-amber-600">
-                No categories found for this type. Try switching income/expense or
-                retry loading.
+                No categories loaded yet. Click Retry to load defaults.
+              </p>
+            ) : null}
+            {!categoriesError &&
+            categories.length > 0 &&
+            filteredCategories.length === 0 ? (
+              <p className="mt-1 text-sm text-amber-600">
+                No categories found for {formData.type}. Try switching
+                income/expense.
               </p>
             ) : null}
           </div>
