@@ -1,104 +1,80 @@
-/*import "./App.css";
-import React from "react";
-
-function App() {
-  return (
-    <>
-      <h1 class="text-3xl font-bold text-blue-600">Tailwind is working 🚀</h1>
-      If text is blue
-    </>
-  );
-}
-
-export default App;
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Provider } from "react-redux";
 import { store } from "./store/store";
-import React from "react";
-import Dashboard from "./components/Dashboard";
-import Body from "./components/Body";
-import Loans from "./components/Loans";
-import Login from "./components/Login";
-import Profile from "./components/profile";
-import Sidebar from "./components/Sidebar";
-import Transactions from "./components/Transactions";
-import Accounts from "./components/Accounts";
-
-import ProtectedRoute from "./components/ProtectedRoute";
-
-function App() {
-  return (
-    <Provider store={store}>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-
-        <Route
-          element={
-            <ProtectedRoute>
-              <Body />
-            </ProtectedRoute>
-          }
-        >
-          <Route path="/" element={<Navigate to="/dashboard" />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/transactions" element={<Transactions />} />
-          <Route path="/loans" element={<Loans />} />
-          <Route path="/accounts" element={<Accounts />} />
-        </Route>
-      </Routes>
-    </Provider>
-  );
-}
-
-export default App;
-*/
-import { Routes, Route, Navigate } from "react-router-dom";
-import { Provider } from "react-redux";
-import { store } from "./store/store";
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { Toaster } from "react-hot-toast";
-import AddAccount from "./components/AddAccount";
-
-import Dashboard from "./components/Dashboard";
-import Body from "./components/Body";
-import Loans from "./components/Loans";
-import Login from "./components/Login";
-import Profile from "./components/Profile";
-import Transactions from "./components/Transactions";
-import Accounts from "./components/Accounts";
-import AddTransaction from "./components/AddTransaction"; // ✅ ADD THIS
 import ProtectedRoute from "./components/ProtectedRoute";
+import Body from "./components/Body";
+import ErrorBoundary from "./components/ErrorBoundary";
+import { ThemeProvider } from "./context/ThemeContext";
+import { AuthProvider } from "./context/AuthContext";
+import { SkeletonDashboard } from "./components/ui/Skeleton";
+
+const Login = lazy(() => import("./components/Login"));
+const Dashboard = lazy(() => import("./components/Dashboard"));
+const Transactions = lazy(() => import("./components/Transactions"));
+const AddTransaction = lazy(() => import("./components/AddTransaction"));
+const Accounts = lazy(() => import("./components/Accounts"));
+const AddAccount = lazy(() => import("./components/AddAccount"));
+const Loans = lazy(() => import("./components/Loans"));
+const Profile = lazy(() => import("./components/Profile"));
+const Budgets = lazy(() => import("./components/Budgets"));
+const Goals = lazy(() => import("./components/Goals"));
+const Reports = lazy(() => import("./components/Reports"));
+const Recurring = lazy(() => import("./components/Recurring"));
+const Notifications = lazy(() => import("./components/Notifications"));
+
+const PageLoader = () => <SkeletonDashboard />;
 
 function App() {
   return (
-    <Provider store={store}>
-      <Toaster position="top-right" toastOptions={{ duration: 2500 }} />
-      <Routes>
-        {/* Public Route */}
-        <Route path="/login" element={<Login />} />
-
-        {/* Protected Routes */}
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Body />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Navigate to="dashboard" />} />
-          <Route path="dashboard" element={<Dashboard />} />
-          <Route path="transactions" element={<Transactions />} />
-          <Route path="transactions/new" element={<AddTransaction />} />{" "}
-          {/* ✅ ADD THIS */}
-          <Route path="accounts" element={<Accounts />} />
-          <Route path="accounts/new" element={<AddAccount />} />
-          <Route path="loans" element={<Loans />} />
-          <Route path="accounts" element={<Accounts />} />
-          <Route path="profile" element={<Profile />} />
-        </Route>
-      </Routes>
-    </Provider>
+    <ErrorBoundary>
+      <Provider store={store}>
+        <ThemeProvider>
+          <AuthProvider>
+            <Toaster
+              position="top-center"
+              toastOptions={{
+                duration: 3000,
+                style: {
+                  background: "var(--app-surface)",
+                  color: "var(--app-text)",
+                  border: "1px solid var(--app-border)",
+                  borderRadius: "12px",
+                },
+              }}
+            />
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route
+                  path="/"
+                  element={
+                    <ProtectedRoute>
+                      <Body />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<Navigate to="dashboard" replace />} />
+                  <Route path="dashboard" element={<Dashboard />} />
+                  <Route path="transactions" element={<Transactions />} />
+                  <Route path="transactions/new" element={<AddTransaction />} />
+                  <Route path="accounts" element={<Accounts />} />
+                  <Route path="accounts/new" element={<AddAccount />} />
+                  <Route path="loans" element={<Loans />} />
+                  <Route path="budgets" element={<Budgets />} />
+                  <Route path="goals" element={<Goals />} />
+                  <Route path="reports" element={<Reports />} />
+                  <Route path="recurring" element={<Recurring />} />
+                  <Route path="notifications" element={<Notifications />} />
+                  <Route path="profile" element={<Profile />} />
+                </Route>
+              </Routes>
+            </Suspense>
+          </AuthProvider>
+        </ThemeProvider>
+      </Provider>
+    </ErrorBoundary>
   );
 }
 

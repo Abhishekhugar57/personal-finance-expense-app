@@ -21,6 +21,8 @@ const {
 } = require("./controllers/loanController");
 const { recalculateAccountBalance } = require("./utils/accountBalance");
 const { ensureDefaultCategories } = require("./utils/defaultCategories");
+const { registerFeatureRoutes } = require("./routes/features");
+const { checkBudgetAlerts } = require("./utils/budgetAlerts");
 
 const app = express();
 
@@ -523,6 +525,14 @@ app.post("/transactions", userAuth, async (req, res) => {
     await transaction.save();
     await recalculateAccountBalance({ userId, accountId: account_id });
 
+    if (type === "expense") {
+      checkBudgetAlerts({
+        userId,
+        categoryIds: [category_id],
+        transactionDate: transaction_date || new Date(),
+      }).catch((err) => console.error("Budget alert check failed:", err.message));
+    }
+
     res.status(201).json(transaction);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -531,15 +541,77 @@ app.post("/transactions", userAuth, async (req, res) => {
 /* ================= GET ALL TRANSACTIONS ================= */
 app.get("/transactions", userAuth, async (req, res) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      type,
+      category,
+      search,
+      sort = "date_desc",
+      dateFrom,
+      dateTo,
+      minAmount,
+      maxAmount,
+      export: exportAll,
+    } = req.query;
 
-    const transactions = await Transaction.find({ user_id: req.userId })
+    const filter = { user_id: req.userId };
+
+    if (type && type !== "all") filter.type = type;
+    if (category) filter.category_id = category;
+    if (dateFrom || dateTo) {
+      filter.transaction_date = {};
+      if (dateFrom) filter.transaction_date.$gte = new Date(dateFrom);
+      if (dateTo) {
+        const end = new Date(dateTo);
+        end.setHours(23, 59, 59, 999);
+        filter.transaction_date.$lte = end;
+      }
+    }
+    if (minAmount || maxAmount) {
+      filter.amount = {};
+      if (minAmount) filter.amount.$gte = Number(minAmount);
+      if (maxAmount) filter.amount.$lte = Number(maxAmount);
+    }
+
+    const sortMap = {
+      date_desc: { transaction_date: -1 },
+      date_asc: { transaction_date: 1 },
+      amount_desc: { amount: -1 },
+      amount_asc: { amount: 1 },
+    };
+
+    let query = Transaction.find(filter)
       .populate("category_id", "name type")
-      .sort({ transaction_date: -1 })
+      .sort(sortMap[sort] || sortMap.date_desc);
+
+    if (search) {
+      const all = await Transaction.find(filter)
+        .populate("category_id", "name type")
+        .sort(sortMap[sort] || sortMap.date_desc);
+      const q = String(search).toLowerCase();
+      const filtered = all.filter(
+        (t) =>
+          String(t.note || "").toLowerCase().includes(q) ||
+          String(t.category_id?.name || "").toLowerCase().includes(q)
+      );
+      if (exportAll === "true") return res.json(filtered);
+      const total = filtered.length;
+      const paged = filtered.slice((page - 1) * limit, page * limit);
+      return res.json({ data: paged, total, page: Number(page), limit: Number(limit) });
+    }
+
+    if (exportAll === "true") {
+      const all = await query;
+      return res.json(all);
+    }
+
+    const total = await Transaction.countDocuments(filter);
+    const transactions = await query
       .skip((page - 1) * limit)
       .limit(Number(limit));
 
-    res.json(transactions);
+    res.json({ data: transactions, total, page: Number(page), limit: Number(limit) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -659,6 +731,24 @@ app.put("/transactions/:id", userAuth, async (req, res) => {
       accountId: transaction.account_id,
     });
     await updated.populate("category_id", "name type");
+
+    if (transaction.type === "expense") {
+      const categoryIds = [
+        transaction.category_id,
+        updated.category_id?._id || updated.category_id,
+      ];
+      const dates = [
+        transaction.transaction_date,
+        updated.transaction_date,
+      ];
+      for (const d of dates) {
+        checkBudgetAlerts({
+          userId: req.userId,
+          categoryIds,
+          transactionDate: d,
+        }).catch((err) => console.error("Budget alert check failed:", err.message));
+      }
+    }
 
     return res.json(updated);
   } catch (err) {
@@ -1045,6 +1135,7 @@ app.get("/dashboard/overview", userAuth, async (req, res) => {
     res.status(500).json({ message: "Server Error" });
   }
 });
+registerFeatureRoutes(app, userAuth);
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

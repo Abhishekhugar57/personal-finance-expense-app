@@ -1,6 +1,94 @@
 @import "tailwindcss";
 
-/* Remove default Recharts focus/hover outlines and strokes */
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --color-primary: #4f46e5;
+  --color-primary-dark: #4338ca;
+  --color-secondary: #7c3aed;
+  --color-success: #10b981;
+  --color-danger: #ef4444;
+  --color-warning: #f59e0b;
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+  --color-border: #e2e8f0;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+  --shadow-card-hover: 0 10px 25px -5px rgb(0 0 0 / 0.08), 0 4px 10px -6px rgb(0 0 0 / 0.06);
+}
+
+:root {
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-surface-elevated: #ffffff;
+  --app-text: #0f172a;
+  --app-text-muted: #64748b;
+  --app-border: #e2e8f0;
+  --app-sidebar: #0f172a;
+  --app-sidebar-text: #f8fafc;
+  --app-sidebar-muted: #94a3b8;
+  --app-primary: #4f46e5;
+  --app-primary-hover: #4338ca;
+  --app-secondary: #7c3aed;
+  --app-success: #10b981;
+  --app-danger: #ef4444;
+  --app-warning: #f59e0b;
+  --app-input-bg: #ffffff;
+  --app-chart-grid: #f1f5f9;
+}
+
+.dark {
+  --app-bg: #0b1120;
+  --app-surface: #111827;
+  --app-surface-elevated: #1e293b;
+  --app-text: #f1f5f9;
+  --app-text-muted: #94a3b8;
+  --app-border: #334155;
+  --app-sidebar: #020617;
+  --app-sidebar-text: #f8fafc;
+  --app-sidebar-muted: #64748b;
+  --app-primary: #6366f1;
+  --app-primary-hover: #818cf8;
+  --app-secondary: #8b5cf6;
+  --app-success: #34d399;
+  --app-danger: #f87171;
+  --app-warning: #fbbf24;
+  --app-input-bg: #1e293b;
+  --app-chart-grid: #1e293b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background: var(--app-bg);
+  color: var(--app-text);
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+/* Focus visible for accessibility */
+:focus-visible {
+  outline: 2px solid var(--app-primary);
+  outline-offset: 2px;
+}
+
+/* Recharts */
 .recharts-wrapper *:focus {
   outline: none !important;
 }
@@ -9,4 +97,39 @@
 .recharts-rectangle,
 .recharts-bar-rectangle path {
   stroke: none !important;
+}
+
+/* Skeleton animation */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--app-border) 25%, var(--app-surface-elevated) 50%, var(--app-border) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-md);
+}
+
+/* Safe area for mobile bottom nav */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--app-border);
+  border-radius: 3px;
+}
+
+/* Touch targets */
+@media (max-width: 768px) {
+  button, a, [role="button"] {
+    min-height: 44px;
+  }
 }

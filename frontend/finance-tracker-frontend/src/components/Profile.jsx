@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { UserRound, Mail, BadgeCheck } from "lucide-react";
 import { addUser, removeUser } from "../store/userSlice";
+import { clearNotifications } from "../store/notificationSlice";
 import api from "../api/client";
 import toast from "react-hot-toast";
 
@@ -177,10 +178,7 @@ const Profile = () => {
     setIsLoggingOut(true);
 
     try {
-      await fetch("/api/logout", {
-        method: "POST",
-        credentials: "include",
-      });
+      await api.post("/logout");
     } catch (error) {
       console.error("Logout request failed:", error);
     } finally {
@@ -189,6 +187,7 @@ const Profile = () => {
       localStorage.removeItem("authToken");
       localStorage.removeItem("user");
       dispatch(removeUser());
+      dispatch(clearNotifications());
       navigate("/login", { replace: true });
       setIsLoggingOut(false);
     }

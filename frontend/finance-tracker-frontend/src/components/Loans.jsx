@@ -16,6 +16,7 @@ import LoanFormModal from "./loans/LoanFormModal";
 import LoadingSpinner from "./loans/LoadingSpinner";
 import RepayLoanModal from "./loans/RepayLoanModal";
 import SummaryCard from "./loans/SummaryCard";
+import { EMICalculatorButton } from "./loans/EMICalculator";
 
 const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
@@ -205,6 +206,7 @@ const Loans = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <EMICalculatorButton />
           <button
             onClick={() => fetchAll({ silent: true })}
             className="h-10 w-10 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition flex items-center justify-center"

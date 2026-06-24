@@ -1,174 +1,97 @@
-import React, { useMemo, useEffect, useState } from "react";
+import React, { useMemo, useEffect, useState, useCallback } from "react";
 import api from "../api/client";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import { motion, useMotionValue, useTransform } from "framer-motion";
 import {
   ArrowDownLeft,
   ArrowUpRight,
   BadgeIndianRupee,
   ClipboardList,
-  Landmark,
   Pencil,
   Trash2,
+  Search,
+  Download,
+  CheckSquare,
+  Square,
+  Filter,
 } from "lucide-react";
+import {
+  Card,
+  Button,
+  Badge,
+  Pill,
+  PageHeader,
+  EmptyState,
+  Modal,
+  Input,
+  Select,
+  ConfirmDialog,
+  SkeletonCard,
+} from "./ui";
+import { transactionApi } from "../services/featureService";
+import {
+  exportTransactionsCSV,
+  exportTransactionsExcel,
+  exportTransactionsPDF,
+} from "../utils/export";
+import { formatINR, formatDate, toDateInputValue } from "../utils/format";
 
-const formatINR = (n) =>
-  `₹${Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-
-const Spinner = ({ label = "Loading..." }) => (
-  <div className="flex items-center justify-center py-16">
-    <div className="flex items-center gap-3 text-gray-600">
-      <div
-        className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900"
-        aria-hidden="true"
-      />
-      <span className="text-sm">{label}</span>
-    </div>
-  </div>
-);
-
-const SummaryCard = ({ label, value, tone = "slate" }) => {
-  const tones = {
-    slate: "bg-white",
-    green: "bg-white",
-    red: "bg-white",
-  };
-  const valueTone =
-    tone === "green"
-      ? "text-emerald-600"
-      : tone === "red"
-        ? "text-red-600"
-        : "text-gray-900";
-
-  return (
-    <div
-      className={`rounded-2xl border border-gray-100 shadow-sm p-4 transition-all duration-200 hover:shadow-md ${tones[tone]}`}
-    >
-      <p className="text-xs font-medium text-gray-500">{label}</p>
-      <p className={`mt-2 text-xl font-bold tracking-tight ${valueTone}`}>
-        {value}
-      </p>
-    </div>
-  );
-};
-
-const Pill = ({ active, onClick, children }) => (
-  <button
-    onClick={onClick}
-    className={`px-3 py-2 rounded-full text-sm font-semibold transition-all duration-200 border ${
-      active
-        ? "bg-slate-900 text-white border-slate-900 shadow-sm"
-        : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:shadow-sm"
-    }`}
-  >
-    {children}
-  </button>
-);
-
-const Tag = ({ children, tone = "blue" }) => {
-  const tones = {
-    blue: "bg-blue-100 text-blue-700",
-    gray: "bg-gray-100 text-gray-700",
-  };
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
-        tones[tone] || tones.gray
-      }`}
-    >
-      {children}
-    </span>
-  );
-};
-
-const TransactionCard = ({ txn, isLoanTxn, onEdit, onDelete }) => {
+const SwipeTransactionCard = ({ txn, isLoanTxn, selected, onSelect, onEdit, onDelete, selectionMode }) => {
   const isIncome = txn.type === "income";
   const Icon = isIncome ? ArrowDownLeft : ArrowUpRight;
-  const title =
-    txn.note?.trim() ||
-    txn.category_id?.name ||
-    (isIncome ? "Income" : "Expense");
-  const subtitle = new Date(txn.transaction_date).toLocaleDateString();
+  const x = useMotionValue(0);
+  const bg = useTransform(x, [-100, 0, 100], ["#EF4444", "#FFFFFF", "#4F46E5"]);
+
+  const handleDragEnd = (_, info) => {
+    if (info.offset.x < -80) onDelete(txn._id);
+    else if (info.offset.x > 80) onEdit(txn._id);
+  };
+
+  const title = txn.note?.trim() || txn.category_id?.name || (isIncome ? "Income" : "Expense");
 
   return (
-    <div className="w-full bg-white rounded-xl border border-gray-200 shadow-sm p-4 md:p-5 transition-all duration-200 hover:shadow-md flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <div
-            className={`h-10 w-10 rounded-xl flex items-center justify-center border ${
-              isIncome
-                ? "bg-emerald-50 border-emerald-100 text-emerald-600"
-                : "bg-red-50 border-red-100 text-red-600"
-            }`}
-          >
-            <Icon size={16} />
-          </div>
-
-          <div className="min-w-0 flex flex-col gap-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="font-semibold text-gray-900 truncate">{title}</p>
-              {isLoanTxn(txn) ? <Tag tone="blue">Loan</Tag> : null}
-              {txn.category_id?.name && !isLoanTxn(txn) ? (
-                <Tag tone="gray">{txn.category_id.name}</Tag>
-              ) : null}
-            </div>
-            <p className="text-xs text-gray-500 leading-tight">{subtitle}</p>
-          </div>
+    <motion.div
+      style={{ x, backgroundColor: bg }}
+      drag="x"
+      dragConstraints={{ left: 0, right: 0 }}
+      dragElastic={0.2}
+      onDragEnd={handleDragEnd}
+      className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-sm overflow-hidden md:!transform-none md:!bg-[var(--app-surface)]"
+    >
+      <div className="p-4 flex items-center gap-3">
+        {selectionMode ? (
+          <button type="button" onClick={() => onSelect(txn._id)} className="shrink-0 text-[var(--app-primary)]">
+            {selected ? <CheckSquare size={20} /> : <Square size={20} />}
+          </button>
+        ) : null}
+        <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${isIncome ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"}`}>
+          <Icon size={16} />
         </div>
-
-        <div className="text-right shrink-0 flex flex-col gap-1 items-end">
-          <p
-            className={`text-base md:text-lg font-bold ${
-              isIncome ? "text-emerald-600" : "text-red-600"
-            }`}
-          >
-            {isIncome ? "+" : "-"}
-            {formatINR(txn.amount)}
-          </p>
-          <p className="text-[11px] md:text-xs text-gray-500 capitalize leading-tight">
-            {txn.type}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-semibold text-[var(--app-text)] truncate text-sm">{title}</p>
+            {isLoanTxn(txn) ? <Badge tone="primary">Loan</Badge> : null}
+            {txn.category_id?.name && !isLoanTxn(txn) ? <Badge tone="neutral">{txn.category_id.name}</Badge> : null}
+          </div>
+          <p className="text-xs text-[var(--app-text-muted)]">{formatDate(txn.transaction_date)}</p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className={`font-bold text-sm ${isIncome ? "text-emerald-600" : "text-red-500"}`}>
+            {isIncome ? "+" : "-"}{formatINR(txn.amount)}
           </p>
         </div>
       </div>
-
-      <div className="flex items-center justify-end gap-2">
-        <button
-          onClick={() => onEdit(txn._id)}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 text-xs sm:text-sm font-semibold text-gray-700 hover:bg-gray-50 transition"
-        >
-          <Pencil size={16} /> Edit
-        </button>
-        <button
-          onClick={() => onDelete(txn._id)}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-red-600 text-xs sm:text-sm font-semibold text-white hover:bg-red-700 transition"
-        >
-          <Trash2 size={16} /> Delete
-        </button>
+      <div className="hidden md:flex items-center justify-end gap-2 px-4 pb-4">
+        <Button size="sm" variant="secondary" onClick={() => onEdit(txn._id)}><Pencil size={14} /> Edit</Button>
+        <Button size="sm" variant="danger" onClick={() => onDelete(txn._id)}><Trash2 size={14} /> Delete</Button>
       </div>
-    </div>
+      <p className="md:hidden text-[10px] text-center text-[var(--app-text-muted)] pb-2">Swipe left to delete · right to edit</p>
+    </motion.div>
   );
 };
 
-const toDateInputValue = (d) => {
-  if (!d) return "";
-  const date = new Date(d);
-  if (Number.isNaN(date.getTime())) return "";
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-};
-
-const EditTransactionModal = ({
-  open,
-  onClose,
-  editTransaction,
-  categories,
-  categoriesLoading,
-  submitting,
-  error,
-  onSubmit,
-}) => {
+const EditTransactionModal = ({ open, onClose, editTransaction, categories, categoriesLoading, submitting, error, onSubmit }) => {
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [description, setDescription] = useState("");
@@ -177,11 +100,7 @@ const EditTransactionModal = ({
   useEffect(() => {
     if (!open || !editTransaction) return;
     setAmount(editTransaction.amount ?? "");
-    setCategoryId(
-      editTransaction.category_id?._id ??
-        editTransaction.category_id ??
-        ""
-    );
+    setCategoryId(editTransaction.category_id?._id ?? editTransaction.category_id ?? "");
     setDescription(editTransaction.note ?? "");
     setDate(toDateInputValue(editTransaction.transaction_date));
   }, [open, editTransaction]);
@@ -194,446 +113,321 @@ const EditTransactionModal = ({
   if (!open || !editTransaction) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 md:p-4"
-      role="dialog"
-      aria-modal="true"
-      onMouseDown={onClose}
-    >
-      <div
-        className="w-full max-w-md overflow-y-auto rounded-lg md:rounded-xl bg-white p-3 shadow-lg max-h-[85vh] md:max-h-[90vh] md:p-6"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-          <div className="flex items-start justify-between gap-3">
-          <div>
-              <h2 className="text-lg font-semibold text-gray-900 leading-tight">
-                Edit Transaction
-              </h2>
-              <p className="mt-1 text-sm text-gray-500 leading-tight">
-                Update amount, category, note, and date.
-              </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition"
-            aria-label="Close"
-            disabled={submitting}
-          >
-            Close
-          </button>
+    <Modal open={open} onClose={onClose} title="Edit Transaction" description="Update amount, category, note, and date">
+      <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); onSubmit({ amount, category_id: categoryId, description, date }); }}>
+        <Input label="Amount" type="number" required min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        <Select label="Category" required value={categoryId} onChange={(e) => setCategoryId(e.target.value)} disabled={categoriesLoading || submitting}>
+          <option value="" disabled>{categoriesLoading ? "Loading..." : "Select category"}</option>
+          {filteredCategories.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+        </Select>
+        <Input label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <Input label="Date" type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
+        {error ? <p className="text-sm text-[var(--app-danger)]" role="alert">{error}</p> : null}
+        <div className="flex gap-2">
+          <Button variant="secondary" className="flex-1" onClick={onClose} disabled={submitting}>Cancel</Button>
+          <Button type="submit" className="flex-1" loading={submitting}>Save</Button>
         </div>
-
-        <form
-          className="mt-3 flex flex-col gap-2 md:gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            onSubmit({
-              amount,
-              category_id: categoryId,
-              description,
-              date,
-            });
-          }}
-        >
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold text-gray-600">
-              Amount
-            </label>
-            <input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              required
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-full rounded-xl border border-gray-200 px-4 py-2.5 md:py-3.5 text-sm shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition"
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold text-gray-600">
-              Category
-            </label>
-            <select
-              required
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-              disabled={categoriesLoading || submitting}
-              className="w-full rounded-xl border border-gray-200 px-4 py-2.5 md:py-3.5 text-sm shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition disabled:opacity-60"
-            >
-              <option value="" disabled>
-                {categoriesLoading
-                  ? "Loading..."
-                  : filteredCategories.length
-                  ? "Select category"
-                  : "No categories available"}
-              </option>
-              {filteredCategories.map((c) => (
-                <option key={c._id} value={c._id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold text-gray-600">
-              Description
-            </label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Add a short description"
-              className="w-full rounded-xl border border-gray-200 px-4 py-2.5 md:py-3.5 text-sm shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition"
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold text-gray-600">
-              Date
-            </label>
-            <input
-              type="date"
-              required
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full rounded-xl border border-gray-200 px-4 py-2.5 md:py-3.5 text-sm shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition"
-            />
-          </div>
-
-          {error ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
-              {error}
-            </div>
-          ) : null}
-
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              className="w-full rounded-xl bg-gray-50 px-4 py-2.5 md:py-3.5 text-xs sm:text-sm font-semibold text-gray-700 hover:bg-gray-100 transition active:scale-[0.99] disabled:opacity-60"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2.5 md:py-3.5 text-xs sm:text-sm font-semibold text-white shadow-md hover:shadow-lg active:scale-[0.98] transition disabled:opacity-60"
-            >
-              {submitting ? (
-                <span className="inline-flex items-center gap-2">
-                  <span
-                    className="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-white"
-                    aria-hidden
-                  />
-                  Saving...
-                </span>
-              ) : (
-                "Save"
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Modal>
   );
 };
 
 const Transactions = () => {
   const [transactions, setTransactions] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
-  const [filterType, setFilterType] = useState("all"); // all | income | expense
-
-  // Edit transaction state
+  const [filterType, setFilterType] = useState("all");
+  const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [minAmount, setMinAmount] = useState("");
+  const [maxAmount, setMaxAmount] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [sort, setSort] = useState("date_desc");
+  const [showFilters, setShowFilters] = useState(false);
+  const [selected, setSelected] = useState([]);
+  const [selectionMode, setSelectionMode] = useState(false);
   const [editTransaction, setEditTransaction] = useState(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState("");
   const [categories, setCategories] = useState([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [bulkCategoryOpen, setBulkCategoryOpen] = useState(false);
+  const [bulkCategoryId, setBulkCategoryId] = useState("");
 
   const navigate = useNavigate();
   const limit = 10;
 
   const isLoanTxn = (txn) =>
-    Boolean(txn?.linkedLoanId) ||
-    String(txn?.category_id?.name || "").toLowerCase() === "loan";
-
-  const filteredTransactions = useMemo(() => {
-    if (filterType === "income")
-      return transactions.filter((t) => t.type === "income");
-    if (filterType === "expense")
-      return transactions.filter((t) => t.type === "expense");
-    return transactions;
-  }, [transactions, filterType]);
+    Boolean(txn?.linkedLoanId) || String(txn?.category_id?.name || "").toLowerCase() === "loan";
 
   const totals = useMemo(() => {
-    const income = transactions
-      .filter((t) => t.type === "income")
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
-    const expense = transactions
-      .filter((t) => t.type === "expense")
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    const income = transactions.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount || 0), 0);
+    const expense = transactions.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount || 0), 0);
     return { income, expense, balance: income - expense };
   }, [transactions]);
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api.get(`/transactions?page=${page}&limit=${limit}`);
-      setTransactions(res.data || []);
-    } catch (err) {
-      console.error(err);
+      const params = { page, limit, sort };
+      if (filterType !== "all") params.type = filterType;
+      if (search) params.search = search;
+      if (dateFrom) params.dateFrom = dateFrom;
+      if (dateTo) params.dateTo = dateTo;
+      if (minAmount) params.minAmount = minAmount;
+      if (maxAmount) params.maxAmount = maxAmount;
+      if (categoryFilter) params.category = categoryFilter;
+
+      const res = await api.get("/transactions", { params });
+      const payload = res.data;
+      if (Array.isArray(payload)) {
+        setTransactions(payload);
+        setTotal(payload.length);
+      } else {
+        setTransactions(payload.data || []);
+        setTotal(payload.total || 0);
+      }
+    } catch {
+      toast.error("Failed to load transactions");
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, filterType, search, dateFrom, dateTo, minAmount, maxAmount, categoryFilter, sort]);
 
-  useEffect(() => {
-    fetchTransactions();
-  }, [page]);
+  useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
 
   const fetchCategories = async () => {
     try {
       setCategoriesLoading(true);
       const res = await api.get("/get/categories");
       setCategories(res.data?.data || res.data || []);
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error("Failed to load categories");
-      setCategories([]);
     } finally {
       setCategoriesLoading(false);
     }
   };
 
+  const fetchAllForExport = async () => {
+    const params = { export: "true", sort };
+    if (filterType !== "all") params.type = filterType;
+    if (search) params.search = search;
+    const res = await api.get("/transactions", { params });
+    return Array.isArray(res.data) ? res.data : res.data?.data || [];
+  };
+
   const openEdit = async (id) => {
     const txn = transactions.find((t) => t._id === id);
     if (!txn) return;
-
     setEditTransaction(txn);
     setEditError("");
     setIsEditOpen(true);
-
-    // Lazy-load categories when opening modal
-    if (!categories.length && !categoriesLoading) {
-      await fetchCategories();
-    }
+    if (!categories.length) await fetchCategories();
   };
 
-  const closeEdit = () => {
-    setIsEditOpen(false);
-    setEditTransaction(null);
-    setEditSubmitting(false);
-    setEditError("");
-  };
+  const closeEdit = () => { setIsEditOpen(false); setEditTransaction(null); setEditSubmitting(false); setEditError(""); };
 
-  const submitEdit = async ({ amount, category_id, description, date }) => {
+  const submitEdit = async (payload) => {
     if (!editTransaction) return;
-
     try {
       setEditSubmitting(true);
-      setEditError("");
-
-      const payload = {
-        amount,
-        category_id,
-        description,
-        date,
-      };
-
       const res = await api.put(`/transactions/${editTransaction._id}`, payload);
-
-      const updated = res.data;
-      setTransactions((prev) =>
-        prev.map((txn) => (txn._id === updated._id ? updated : txn))
-      );
+      setTransactions((prev) => prev.map((t) => (t._id === res.data._id ? res.data : t)));
       window.dispatchEvent(new Event("finance-data-changed"));
-
       toast.success("Transaction updated");
       closeEdit();
     } catch (err) {
-      console.error(err);
-      const message =
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        "Failed to update transaction";
-      setEditError(message);
-      toast.error(message);
+      setEditError(err?.response?.data?.error || "Failed to update");
+      toast.error("Update failed");
     } finally {
       setEditSubmitting(false);
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this transaction?"))
-      return;
+  const handleDelete = (id) => setDeleteConfirm(id);
 
+  const confirmDelete = async () => {
     try {
-      await api.delete(`/transactions/${id}`);
+      await api.delete(`/transactions/${deleteConfirm}`);
+      toast.success("Deleted");
       fetchTransactions();
       window.dispatchEvent(new Event("finance-data-changed"));
-    } catch (err) {
-      console.error(err);
+    } catch {
+      toast.error("Delete failed");
+    } finally {
+      setDeleteConfirm(null);
     }
   };
 
+  const toggleSelect = (id) => {
+    setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
+
+  const bulkDelete = async () => {
+    if (!selected.length) return;
+    try {
+      await transactionApi.bulkDelete(selected);
+      toast.success(`${selected.length} deleted`);
+      setSelected([]);
+      setSelectionMode(false);
+      fetchTransactions();
+      window.dispatchEvent(new Event("finance-data-changed"));
+    } catch {
+      toast.error("Bulk delete failed");
+    }
+  };
+
+  const bulkCategoryUpdate = async () => {
+    if (!selected.length || !bulkCategoryId) return;
+    try {
+      await transactionApi.bulkCategory(selected, bulkCategoryId);
+      toast.success("Categories updated");
+      setBulkCategoryOpen(false);
+      setSelected([]);
+      setSelectionMode(false);
+      fetchTransactions();
+    } catch {
+      toast.error("Update failed");
+    }
+  };
+
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+
   return (
-    <div className="w-full min-h-full bg-gray-50 overflow-x-hidden pb-24">
-      <div className="max-w-5xl mx-auto px-3 py-3 sm:px-4 sm:py-4 md:px-6 md:py-6 space-y-4 md:space-y-6">
-        {/* Header */}
-        <div className="bg-white border border-gray-100 rounded-lg md:rounded-2xl shadow-sm p-3 sm:p-4 md:p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 md:gap-4">
-            <div className="flex items-center gap-3">
-              <div className="h-11 w-11 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-sm">
-                <ClipboardList size={20} />
-              </div>
-              <div>
-                <h1 className="text-xl md:text-2xl font-semibold text-gray-900 leading-tight">
-                  Transactions
-                </h1>
-                <p className="text-sm text-gray-500">
-                  Track income, expenses, and loan-linked activity.
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => navigate("/transactions/new")}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 transition-all duration-200"
-            >
-              <BadgeIndianRupee size={18} />
-              Add Transaction
-            </button>
-          </div>
-
-          {/* Summary strip */}
-          <div className="mt-4 md:mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <SummaryCard
-              label="Total Income"
-              value={formatINR(totals.income)}
-              tone="green"
-            />
-            <SummaryCard
-              label="Total Expense"
-              value={formatINR(totals.expense)}
-              tone="red"
-            />
-            <SummaryCard
-              label="Balance"
-              value={formatINR(totals.balance)}
-              tone="slate"
-            />
-          </div>
-
-          {/* Filters */}
-          <div className="mt-4 md:mt-5 flex items-center gap-2 flex-wrap">
-            <Pill active={filterType === "all"} onClick={() => setFilterType("all")}>
-              All
-            </Pill>
-            <Pill
-              active={filterType === "income"}
-              onClick={() => setFilterType("income")}
-            >
-              Income
-            </Pill>
-            <Pill
-              active={filterType === "expense"}
-              onClick={() => setFilterType("expense")}
-            >
-              Expense
-            </Pill>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="mt-4 border-t border-gray-200 pt-4 md:mt-8 md:pt-6 lg:mt-10">
-          {loading ? (
-            <Spinner label="Fetching transactions..." />
-          ) : transactions.length === 0 ? (
-            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-10 text-center">
-              <div className="mx-auto h-12 w-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-sm">
-                <Landmark size={22} />
-              </div>
-              <h3 className="mt-4 text-lg font-semibold text-gray-900">
-                No transactions yet
-              </h3>
-              <p className="mt-1 text-sm text-gray-500">
-                Add your first transaction to start tracking your cashflow.
-              </p>
-              <div className="mt-6">
-                <button
-                  onClick={() => navigate("/transactions/new")}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 transition-all duration-200"
-                >
-                  <BadgeIndianRupee size={18} />
-                  Add Transaction
-                </button>
-              </div>
-            </div>
-          ) : filteredTransactions.length === 0 ? (
-            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-10 text-center">
-              <div className="mx-auto h-12 w-12 rounded-2xl bg-gray-900 text-white flex items-center justify-center shadow-sm">
-                <Landmark size={22} />
-              </div>
-              <h3 className="mt-4 text-lg font-semibold text-gray-900">
-                No matching transactions
-              </h3>
-              <p className="mt-1 text-sm text-gray-500">
-                Try switching the filter.
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4 md:gap-5">
-              {filteredTransactions.map((txn) => (
-                <TransactionCard
-                  key={txn._id}
-                  txn={txn}
-                  isLoanTxn={isLoanTxn}
-                  onEdit={(id) => openEdit(id)}
-                  onDelete={(id) => handleDelete(id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Pagination */}
-        <div className="flex flex-wrap justify-end gap-2">
-          <button
-            onClick={() => setPage((prev) => prev - 1)}
-            disabled={page === 1}
-            className="px-3.5 py-2 rounded-xl bg-white border border-gray-200 text-sm font-semibold text-gray-700 disabled:opacity-50 hover:bg-gray-50 transition-all duration-200"
-          >
-            Prev
-          </button>
-          <span className="px-3.5 py-2 rounded-xl bg-white border border-gray-200 text-sm font-semibold text-gray-700">
-            Page {page}
-          </span>
-          <button
-            onClick={() => setPage((prev) => prev + 1)}
-            className="px-3.5 py-2 rounded-xl bg-white border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all duration-200"
-          >
-            Next
-          </button>
-        </div>
-      </div>
-
-      <EditTransactionModal
-        open={isEditOpen}
-        onClose={closeEdit}
-        editTransaction={editTransaction}
-        categories={categories}
-        categoriesLoading={categoriesLoading}
-        submitting={editSubmitting}
-        error={editError}
-        onSubmit={submitEdit}
+    <div className="max-w-5xl mx-auto space-y-4 md:space-y-6">
+      <PageHeader
+        title="Transactions"
+        subtitle="Track income, expenses, and loan activity"
+        icon={ClipboardList}
+        action={
+          <Button onClick={() => navigate("/transactions/new")}>
+            <BadgeIndianRupee size={18} /> Add
+          </Button>
+        }
       />
+
+      <Card>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          {[
+            { label: "Income", value: formatINR(totals.income), color: "text-emerald-600" },
+            { label: "Expense", value: formatINR(totals.expense), color: "text-red-500" },
+            { label: "Balance", value: formatINR(totals.balance), color: "text-[var(--app-text)]" },
+          ].map((s) => (
+            <div key={s.label} className="text-center p-2 rounded-xl bg-[var(--app-bg)]">
+              <p className="text-[10px] text-[var(--app-text-muted)]">{s.label}</p>
+              <p className={`text-sm font-bold ${s.color}`}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--app-text-muted)]" />
+            <input
+              type="search"
+              placeholder="Search notes, categories..."
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-[var(--app-border)] bg-[var(--app-input-bg)] text-sm"
+            />
+          </div>
+          <Button variant="secondary" onClick={() => setShowFilters(!showFilters)}><Filter size={16} /> Filters</Button>
+        </div>
+
+        {showFilters ? (
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 rounded-xl bg-[var(--app-bg)]">
+            <Input label="From" type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} />
+            <Input label="To" type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} />
+            <Input label="Min ₹" type="number" value={minAmount} onChange={(e) => { setMinAmount(e.target.value); setPage(1); }} />
+            <Input label="Max ₹" type="number" value={maxAmount} onChange={(e) => { setMaxAmount(e.target.value); setPage(1); }} />
+            <Select label="Sort" value={sort} onChange={(e) => setSort(e.target.value)}>
+              <option value="date_desc">Newest first</option>
+              <option value="date_asc">Oldest first</option>
+              <option value="amount_desc">Highest amount</option>
+              <option value="amount_asc">Lowest amount</option>
+            </Select>
+            <Select label="Category" value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}>
+              <option value="">All categories</option>
+              {categories.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+            </Select>
+          </div>
+        ) : null}
+
+        <div className="mt-3 flex flex-wrap gap-2 items-center">
+          {["all", "income", "expense"].map((f) => (
+            <Pill key={f} active={filterType === f} onClick={() => { setFilterType(f); setPage(1); }}>
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+            </Pill>
+          ))}
+          <div className="ml-auto flex flex-wrap gap-2">
+            <Button size="sm" variant="ghost" onClick={() => { setSelectionMode(!selectionMode); setSelected([]); }}>
+              {selectionMode ? "Cancel" : "Select"}
+            </Button>
+            <Button size="sm" variant="secondary" onClick={async () => { const data = await fetchAllForExport(); exportTransactionsCSV(data); }}>
+              CSV
+            </Button>
+            <Button size="sm" variant="secondary" onClick={async () => { const data = await fetchAllForExport(); exportTransactionsExcel(data); }}>
+              Excel
+            </Button>
+            <Button size="sm" variant="secondary" onClick={async () => { const data = await fetchAllForExport(); exportTransactionsPDF(data); }}>
+              <Download size={14} /> PDF
+            </Button>
+          </div>
+        </div>
+
+        {selectionMode && selected.length > 0 ? (
+          <div className="mt-3 flex gap-2 p-3 rounded-xl bg-[var(--app-primary)]/10">
+            <span className="text-sm font-medium text-[var(--app-text)] self-center">{selected.length} selected</span>
+            <Button size="sm" variant="danger" onClick={bulkDelete}>Delete</Button>
+            <Button size="sm" variant="secondary" onClick={() => { setBulkCategoryOpen(true); if (!categories.length) fetchCategories(); }}>Change Category</Button>
+          </div>
+        ) : null}
+      </Card>
+
+      {loading ? (
+        <div className="space-y-3">{[1, 2, 3].map((i) => <SkeletonCard key={i} />)}</div>
+      ) : transactions.length === 0 ? (
+        <EmptyState icon={ClipboardList} title="No transactions" description="Add your first transaction to start tracking." actionLabel="Add Transaction" onAction={() => navigate("/transactions/new")} />
+      ) : (
+        <div className="space-y-3">
+          {transactions.map((txn) => (
+            <SwipeTransactionCard
+              key={txn._id}
+              txn={txn}
+              isLoanTxn={isLoanTxn}
+              selected={selected.includes(txn._id)}
+              onSelect={toggleSelect}
+              selectionMode={selectionMode}
+              onEdit={openEdit}
+              onDelete={handleDelete}
+            />
+          ))}
+        </div>
+      )}
+
+      {total > limit ? (
+        <div className="flex items-center justify-between gap-2">
+          <Button variant="secondary" size="sm" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+          <span className="text-sm text-[var(--app-text-muted)]">Page {page} of {totalPages}</span>
+          <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+        </div>
+      ) : null}
+
+      <EditTransactionModal open={isEditOpen} onClose={closeEdit} editTransaction={editTransaction} categories={categories} categoriesLoading={categoriesLoading} submitting={editSubmitting} error={editError} onSubmit={submitEdit} />
+
+      <ConfirmDialog open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} onConfirm={confirmDelete} title="Delete Transaction" message="This action cannot be undone." confirmLabel="Delete" />
+
+      <Modal open={bulkCategoryOpen} onClose={() => setBulkCategoryOpen(false)} title="Bulk Category Update" size="sm">
+        <Select label="New Category" value={bulkCategoryId} onChange={(e) => setBulkCategoryId(e.target.value)}>
+          <option value="">Select category</option>
+          {categories.map((c) => <option key={c._id} value={c._id}>{c.name} ({c.type})</option>)}
+        </Select>
+        <Button className="w-full mt-4" onClick={bulkCategoryUpdate}>Update {selected.length} transactions</Button>
+      </Modal>
     </div>
   );
 };

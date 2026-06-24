@@ -4,6 +4,7 @@ const Category = require("../models/category");
 const Transaction = require("../models/transaction");
 const { applyMonthlyInterest, computeDueDate } = require("../utils/loanInterest");
 const { recalculateAccountBalance } = require("../utils/accountBalance");
+const { checkBudgetAlerts } = require("../utils/budgetAlerts");
 
 async function getOrCreateLoanCategory({ userId, type }) {
   const name = "Loan";
@@ -70,6 +71,14 @@ async function createTransactionAndUpdateBalance({
   });
 
   await recalculateAccountBalance({ userId, accountId });
+
+  if (type === "expense") {
+    checkBudgetAlerts({
+      userId,
+      categoryIds: [categoryId],
+      transactionDate: transaction_date,
+    }).catch((err) => console.error("Budget alert check failed:", err.message));
+  }
 
   return txn;
 }

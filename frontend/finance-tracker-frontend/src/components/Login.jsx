@@ -419,7 +419,7 @@ const Login = () => {
 
           <div className="space-y-4">
             <h1 className="text-4xl font-bold tracking-tight text-slate-900">
-              Finance Tracker
+              FinTrack
             </h1>
             <p className="mx-auto max-w-sm text-base text-slate-600 leading-relaxed">
               Manage expenses, stay on top of loans, and unlock clear cashflow

@@ -1,22 +1,50 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import api from "../api/client";
+import { goalApi } from "../services/featureService";
 import SummaryCards from "./dashboard/SummaryCard";
+import WelcomeCard from "./dashboard/WelcomeCard";
 import IncomeExpenseChart from "./dashboard/IncomeExpChart";
 import ExpensePie from "./dashboard/ExpensePie";
+import SavingsGrowthChart from "./dashboard/SavingsGrowthChart";
 import LoanSummaryCards from "./dashboard/LoanSummaryCards";
 import RecentTransactions from "./dashboard/RecentTransctions";
 import UpcomingPayments from "./dashboard/UpcomingPayments";
 import SavingsGoals from "./dashboard/SavingsGoals";
+import CashFlowSummary from "./dashboard/CashFlowSummary";
+import FinancialHealthScore from "./dashboard/FinancialHealthScore";
+import SpendingInsights from "./dashboard/SpendingInsights";
+import { SkeletonDashboard } from "./ui/Skeleton";
+import { Select } from "./ui/Input";
+import { parseTxnDate } from "../utils/format";
 
 const Dashboard = () => {
   const [data, setData] = useState(null);
   const [loans, setLoans] = useState([]);
+  const [goals, setGoals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("last3Months");
+  const user = useSelector((state) => state.user);
 
-  const user = useSelector((state) => state.user); // ✅ ADD THIS
+  const fetchDashboard = async ({ silent = false } = {}) => {
+    try {
+      if (!silent) setLoading(true);
+      setError("");
+      const [overviewRes, loansRes, goalsRes] = await Promise.all([
+        api.get("/dashboard/overview"),
+        api.get("/get/loan"),
+        goalApi.list().catch(() => ({ data: [] })),
+      ]);
+      setData(overviewRes.data);
+      setLoans(loansRes.data || []);
+      setGoals(goalsRes.data || []);
+    } catch {
+      setError("Failed to load dashboard data.");
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -27,95 +55,41 @@ const Dashboard = () => {
     if (!user) return undefined;
     const handleFinanceRefresh = () => fetchDashboard({ silent: true });
     window.addEventListener("finance-data-changed", handleFinanceRefresh);
-    return () => {
-      window.removeEventListener("finance-data-changed", handleFinanceRefresh);
-    };
+    return () => window.removeEventListener("finance-data-changed", handleFinanceRefresh);
   }, [user]);
-
-  const fetchDashboard = async ({ silent = false } = {}) => {
-    try {
-      if (!silent) setLoading(true);
-      setError("");
-      const [overviewRes, loansRes] = await Promise.all([
-        api.get("/dashboard/overview"),
-        api.get("/get/loan"),
-      ]);
-      setData(overviewRes.data);
-      setLoans(loansRes.data || []);
-    } catch (error) {
-      console.error("Dashboard error:", error);
-      setError("Failed to load dashboard data.");
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
 
   const filteredOverview = useMemo(() => {
     if (!data) return null;
-
     const allTransactions = data.transactions || [];
     const now = new Date();
-    const parseTxnDate = (txn) => {
-      const rawDate = txn.transaction_date || txn.date;
-      if (!rawDate) return null;
 
-      // Parse YYYY-MM-DD as local date to avoid UTC timezone shifts.
-      if (typeof rawDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
-        const [y, m, d] = rawDate.split("-").map(Number);
-        const localDate = new Date(y, m - 1, d);
-        return Number.isNaN(localDate.getTime()) ? null : localDate;
-      }
-
-      const parsed = new Date(rawDate);
-      return Number.isNaN(parsed.getTime()) ? null : parsed;
-    };
     const isOpeningBalanceTxn = (txn) =>
       txn?.isOpeningBalance === true ||
-      String(txn?.note || "")
-        .trim()
-        .toLowerCase() === "opening balance" ||
-      String(txn?.category_id?.name || "")
-        .trim()
-        .toLowerCase() === "opening balance";
+      String(txn?.note || "").trim().toLowerCase() === "opening balance";
 
     const filteredTransactions = allTransactions.filter((txn) => {
       const txnDate = parseTxnDate(txn);
       if (!txnDate) return false;
-
       if (filter === "thisMonth") {
-        return (
-          txnDate.getMonth() === now.getMonth() &&
-          txnDate.getFullYear() === now.getFullYear()
-        );
+        return txnDate.getMonth() === now.getMonth() && txnDate.getFullYear() === now.getFullYear();
       }
-
       if (filter === "last3Months") {
         const pastDate = new Date(now);
-        pastDate.setHours(0, 0, 0, 0);
         pastDate.setMonth(now.getMonth() - 3);
         return txnDate >= pastDate && txnDate <= now;
       }
-
       if (filter === "thisYear") {
-        const startOfYear = new Date(now.getFullYear(), 0, 1);
-        startOfYear.setHours(0, 0, 0, 0);
-        const endOfToday = new Date();
-        endOfToday.setHours(23, 59, 59, 999);
-        return txnDate >= startOfYear && txnDate <= endOfToday;
+        return txnDate.getFullYear() === now.getFullYear();
       }
-
       return true;
     });
 
     const income = filteredTransactions
       .filter((t) => t.type === "income" && !isOpeningBalanceTxn(t))
       .reduce((acc, t) => acc + Number(t.amount || 0), 0);
-
     const expense = filteredTransactions
       .filter((t) => t.type === "expense")
       .reduce((acc, t) => acc + Number(t.amount || 0), 0);
-
-    const savings = income - expense;
 
     const monthlyMap = {};
     const categoryMap = {};
@@ -124,7 +98,6 @@ const Dashboard = () => {
       const amount = Number(txn.amount || 0);
       const d = parseTxnDate(txn);
       if (!d) return;
-
       const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
       if (!monthlyMap[key]) {
         monthlyMap[key] = {
@@ -135,103 +108,97 @@ const Dashboard = () => {
           sortDate: new Date(d.getFullYear(), d.getMonth(), 1),
         };
       }
-
-      if (txn.type === "income" && !isOpeningBalanceTxn(txn)) {
-        monthlyMap[key].income += amount;
-      } else if (txn.type === "expense") {
+      if (txn.type === "income" && !isOpeningBalanceTxn(txn)) monthlyMap[key].income += amount;
+      else if (txn.type === "expense") {
         monthlyMap[key].expense += amount;
-        const categoryName = txn.category_id?.name || "Other";
-        categoryMap[categoryName] = (categoryMap[categoryName] || 0) + amount;
+        const cat = txn.category_id?.name || "Other";
+        categoryMap[cat] = (categoryMap[cat] || 0) + amount;
       }
     });
 
-    const monthlyData = Object.values(monthlyMap).sort(
-      (a, b) => a.sortDate - b.sortDate
-    );
-
-    const categoryBreakdown = Object.keys(categoryMap).map((key) => ({
-      category: key,
-      amount: categoryMap[key],
-    }));
-
-    const recentTransactions = [...filteredTransactions]
-      .sort((a, b) => parseTxnDate(b) - parseTxnDate(a))
-      .slice(0, 5);
+    const loanBurden = loans
+      .filter((l) => l.type === "TAKEN" && l.status === "ACTIVE")
+      .reduce((s, l) => s + Number(l.outstandingAmount || 0), 0);
 
     return {
       ...data,
       totalBalance: Number(data.totalBalance || 0),
       income,
       expense,
-      savings,
-      monthlyData,
-      categoryBreakdown,
-      recentTransactions,
+      savings: income - expense,
+      monthlyData: Object.values(monthlyMap).sort((a, b) => a.sortDate - b.sortDate),
+      categoryBreakdown: Object.keys(categoryMap).map((k) => ({ category: k, amount: categoryMap[k] })),
+      recentTransactions: [...filteredTransactions]
+        .sort((a, b) => parseTxnDate(b) - parseTxnDate(a))
+        .slice(0, 5),
+      loanBurden,
     };
-  }, [data, filter]);
+  }, [data, filter, loans]);
 
-  if (loading) {
-    return (
-      <div className="p-6 space-y-6 bg-gray-50 animate-pulse pb-24">
-        <div className="h-24 bg-white rounded-2xl" />
-        <div className="h-72 bg-white rounded-2xl" />
-        <div className="h-72 bg-white rounded-2xl" />
-      </div>
-    );
-  }
-
+  if (loading) return <SkeletonDashboard />;
   if (!data || !filteredOverview || error) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh] text-gray-500">
+      <div className="flex items-center justify-center min-h-[50vh] text-[var(--app-text-muted)]">
         {error || "Failed to load dashboard."}
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-full px-3 py-3 md:px-6 md:py-6 bg-gray-50 space-y-4 md:space-y-8 overflow-x-hidden pb-24">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4">
-        <h1 className="text-xl md:text-2xl font-semibold text-gray-800 leading-tight">
-          Financial Overview
-        </h1>
-
-        <select
+    <div className="w-full max-w-7xl mx-auto space-y-4 md:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h1 className="hidden md:block text-2xl font-bold text-[var(--app-text)]">Dashboard</h1>
+        <Select
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200"
+          className="w-full sm:w-auto sm:min-w-[180px]"
+          aria-label="Date filter"
         >
           <option value="thisMonth">This Month</option>
           <option value="last3Months">Last 3 Months</option>
           <option value="thisYear">This Year</option>
-        </select>
+        </Select>
       </div>
 
-      {/* Summary Cards */}
-      <div className="scale-[0.95] md:scale-100 origin-top">
-        <SummaryCards data={filteredOverview} />
+      <WelcomeCard balance={filteredOverview.totalBalance} />
+
+      <SummaryCards data={filteredOverview} />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        <CashFlowSummary
+          income={filteredOverview.income}
+          expense={filteredOverview.expense}
+          savings={filteredOverview.savings}
+        />
+        <FinancialHealthScore
+          income={filteredOverview.income}
+          expense={filteredOverview.expense}
+          loanBurden={filteredOverview.loanBurden > 0 ? 0.3 : 0}
+        />
+        <SpendingInsights
+          categoryBreakdown={filteredOverview.categoryBreakdown}
+          expense={filteredOverview.expense}
+        />
       </div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-6">
         <IncomeExpenseChart data={filteredOverview.monthlyData} />
         <ExpensePie data={filteredOverview.categoryBreakdown} />
       </div>
 
-      {/* Loan Summary */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base md:text-lg font-semibold text-gray-900 leading-tight">
-            Loans
-          </h2>
-          <p className="text-sm text-gray-500">
-            Real-time totals from your loans
-          </p>
-        </div>
-        <LoanSummaryCards loans={loans} />
+      <SavingsGrowthChart data={filteredOverview.monthlyData} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+        <RecentTransactions transactions={filteredOverview.recentTransactions} />
+        <UpcomingPayments loans={loans} />
       </div>
 
-      {/* Bottom Section */}
+      <SavingsGoals goals={goals} />
+
+      <div className="space-y-4">
+        <h2 className="text-base font-semibold text-[var(--app-text)]">Loan Summary</h2>
+        <LoanSummaryCards loans={loans} />
+      </div>
     </div>
   );
 };

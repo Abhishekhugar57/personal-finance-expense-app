@@ -1,105 +1,64 @@
 import React, { useState } from "react";
 import api from "../api/client";
 import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
+import { Card, Button, Input, Select, PageHeader } from "./ui";
+import { Wallet } from "lucide-react";
+
+const ACCOUNT_TYPES = [
+  { value: "BANK", label: "Bank Account" },
+  { value: "CASH", label: "Cash" },
+  { value: "WALLET", label: "Wallet" },
+  { value: "UPI", label: "UPI" },
+  { value: "CREDIT", label: "Credit Card" },
+];
 
 const AddAccount = () => {
   const navigate = useNavigate();
+  const [form, setForm] = useState({ name: "", type: "BANK", balance: 0 });
+  const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
 
-  const [form, setForm] = useState({
-    name: "",
-    type: "BANK",
-    balance: 0,
-  });
-
-  const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+  const validate = () => {
+    const e = {};
+    if (!form.name.trim()) e.name = "Account name is required";
+    if (Number(form.balance) < 0) e.balance = "Balance cannot be negative";
+    setErrors(e);
+    return !Object.keys(e).length;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
+    if (!validate()) return;
     try {
-      await api.post("/account", form);
-
-      alert("Account created successfully");
-
-      navigate("/accounts"); // go back to accounts page
+      setSubmitting(true);
+      await api.post("/account", { ...form, balance: Number(form.balance) });
+      toast.success("Account created");
+      window.dispatchEvent(new Event("finance-data-changed"));
+      navigate("/accounts");
     } catch (err) {
-      console.error(err);
-      alert("Failed to create account");
+      toast.error(err?.response?.data?.error || "Failed to create account");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="w-full max-w-xl mx-auto bg-white shadow-md rounded-xl p-4 sm:p-6 mt-4 sm:mt-6 overflow-x-hidden">
-      <h2 className="text-xl font-semibold mb-6">Add Account</h2>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Name */}
-        <div>
-          <label className="block text-sm font-medium mb-1">Account Name</label>
-          <input
-            type="text"
-            name="name"
-            required
-            value={form.name}
-            onChange={handleChange}
-            className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-            placeholder="HDFC Bank"
-          />
-        </div>
-
-        {/* Type */}
-        <div>
-          <label className="block text-sm font-medium mb-1">Account Type</label>
-          <select
-            name="type"
-            value={form.type}
-            onChange={handleChange}
-            className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="BANK">Bank</option>
-            <option value="CASH">Cash</option>
-            <option value="WALLET">Wallet</option>
-            <option value="CREDIT">Credit Card</option>
-          </select>
-        </div>
-
-        {/* Balance */}
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Initial Balance
-          </label>
-          <input
-            type="number"
-            name="balance"
-            value={form.balance}
-            onChange={handleChange}
-            className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        {/* Buttons */}
-        <div className="flex flex-col sm:flex-row gap-3 pt-4 sm:justify-end">
-          <button
-            type="button"
-            onClick={() => navigate("/accounts")}
-            className="w-full sm:w-auto px-4 py-2 border rounded-lg"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="submit"
-            className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Save Account
-          </button>
-        </div>
-      </form>
+    <div className="max-w-lg mx-auto">
+      <PageHeader title="Add Account" subtitle="Create a new financial account" icon={Wallet} />
+      <Card className="mt-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Input label="Account Name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} error={errors.name} placeholder="HDFC Savings" />
+          <Select label="Account Type" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+            {ACCOUNT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </Select>
+          <Input label="Initial Balance (₹)" type="number" min="0" value={form.balance} onChange={(e) => setForm({ ...form, balance: e.target.value })} error={errors.balance} />
+          <div className="flex gap-2 pt-2">
+            <Button variant="secondary" className="flex-1" onClick={() => navigate("/accounts")}>Cancel</Button>
+            <Button type="submit" className="flex-1" loading={submitting}>Save Account</Button>
+          </div>
+        </form>
+      </Card>
     </div>
   );
 };
