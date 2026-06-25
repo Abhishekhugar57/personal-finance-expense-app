@@ -13,6 +13,8 @@ const mongoose = require("mongoose");
 const Transaction = require("./models/transaction");
 const Loan = require("./models/loan");
 const cors = require("cors");
+const { corsOptions } = require("./utils/corsConfig");
+const { setAuthCookie } = require("./utils/authCookie");
 const {
   createLoan,
   updateLoan: updateLoanController,
@@ -46,26 +48,8 @@ const isTransferLikeTxn = (txn) => {
   return note.startsWith("transfer") || categoryName === "transfer";
 };
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      const allowedOrigins = [
-        process.env.FRONTEND_URL,
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5173",
-      ].filter(Boolean);
-
-      if (!origin || allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(null, true);
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 
 // 🔥 ADD THIS RIGHT HERE
 
@@ -174,11 +158,7 @@ app.post("/login", async (req, res) => {
         expiresIn: "7d",
       }
     );
-    res.cookie("token", token, {
-      httpOnly: true,
-      sameSite: "lax", // Changed for local development
-      secure: false, // Changed for local development
-    });
+    setAuthCookie(res, token);
     res.status(200).json({
       message: "Login successful",
       existingUser,

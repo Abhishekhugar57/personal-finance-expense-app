@@ -7,11 +7,12 @@ const Account = require("../models/account");
 const Category = require("../models/category");
 const { recalculateAccountBalance } = require("../utils/accountBalance");
 const { resetBudgetAlertLogs, checkBudgetAlerts } = require("../utils/budgetAlerts");
+const { clearAuthCookie } = require("../utils/authCookie");
 
 const registerFeatureRoutes = (app, userAuth) => {
   /* ================= LOGOUT ================= */
   app.post("/logout", userAuth, (req, res) => {
-    res.clearCookie("token", { httpOnly: true, sameSite: "lax" });
+    clearAuthCookie(res);
     res.json({ message: "Logged out" });
   });
 
