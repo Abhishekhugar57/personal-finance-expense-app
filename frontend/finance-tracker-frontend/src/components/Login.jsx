@@ -12,6 +12,7 @@ import { useDispatch } from "react-redux";
 import { addUser } from "../store/userSlice";
 import api from "../api/client";
 import { Button, Input } from "./ui";
+import "./Login.css";
 
 const Login = () => {
   const [isSignedInForm, setIsSignedInForm] = useState(true);
@@ -104,8 +105,8 @@ const Login = () => {
   ];
 
   return (
-    <div className="min-h-screen min-h-[100dvh] flex flex-col md:flex-row bg-[var(--app-bg)] font-sans">
-      {/* Desktop branding panel */}
+    <div className="login-page min-h-screen min-h-[100dvh] flex flex-col md:flex-row bg-[var(--app-bg)] font-sans">
+      {/* Desktop branding panel — unchanged */}
       <div className="relative hidden md:flex md:w-1/2 items-center justify-center p-12 overflow-hidden bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-secondary)]">
         <div className="pointer-events-none absolute -left-16 -top-16 h-80 w-80 rounded-full bg-white/10 blur-2xl" />
         <div className="pointer-events-none absolute -right-10 bottom-0 h-64 w-64 rounded-full bg-white/5 blur-2xl" />
@@ -131,22 +132,22 @@ const Login = () => {
         </div>
       </div>
 
-      {/* Form panel — mobile-first */}
-      <div className="flex-1 flex flex-col md:items-center md:justify-center px-4 pt-6 pb-8 sm:px-6 md:p-8 safe-bottom">
-        {/* Mobile brand header */}
-        <div className="md:hidden flex items-center gap-3 mb-5">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-secondary)] shadow-md">
+      {/* Form panel */}
+      <div className="login-form-panel flex-1 flex flex-col md:items-center md:justify-center px-4 pt-6 pb-8 sm:px-6 md:p-8 safe-bottom">
+        {/* Mobile brand header — hidden on md+ */}
+        <div className="login-mobile-brand md:hidden flex items-center gap-3 mb-5">
+          <div className="login-brand-icon flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-secondary)] shadow-md">
             <span className="text-lg font-extrabold text-white">₹</span>
           </div>
           <div>
-            <p className="text-base font-bold text-[var(--app-text)] leading-tight">FinTrack</p>
-            <p className="text-xs text-[var(--app-text-muted)]">Personal finance, simplified</p>
+            <p className="login-brand-title text-base font-bold text-[var(--app-text)] leading-tight">FinTrack</p>
+            <p className="login-brand-tagline text-xs text-[var(--app-text-muted)]">Personal finance, simplified</p>
           </div>
         </div>
 
-        <div className="w-full max-w-md md:mx-auto">
-          <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-5 sm:p-6 md:p-8 shadow-[var(--shadow-card)]">
-            <div className="mb-5">
+        <div className="login-form-inner w-full max-w-md md:mx-auto">
+          <div className="login-card rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-5 sm:p-6 md:p-8 shadow-[var(--shadow-card)]">
+            <div className="login-card-header mb-5">
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--app-text)]">
                 {isSignedInForm ? "Welcome back" : "Create account"}
               </h1>
@@ -157,39 +158,45 @@ const Login = () => {
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-3.5">
+            <form onSubmit={handleSubmit} className="login-form space-y-3.5">
               {!isSignedInForm && (
-                <Input
-                  ref={fullName}
-                  label="Full name"
-                  type="text"
-                  placeholder="Your full name"
-                  autoComplete="name"
-                />
+                <div className="login-field">
+                  <Input
+                    ref={fullName}
+                    label="Full name"
+                    type="text"
+                    placeholder="Your full name"
+                    autoComplete="name"
+                  />
+                </div>
               )}
 
-              <Input
-                ref={email}
-                label="Email"
-                type="email"
-                placeholder="you@example.com"
-                autoComplete="email"
-              />
-
-              <div className="relative">
+              <div className="login-field">
                 <Input
-                  ref={password}
-                  label="Password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="At least 6 characters"
-                  autoComplete={isSignedInForm ? "current-password" : "new-password"}
-                  className="pr-12"
+                  ref={email}
+                  label="Email"
+                  type="email"
+                  placeholder="you@example.com"
+                  autoComplete="email"
                 />
+              </div>
+
+              <div className="login-password-wrap relative">
+                <div className="login-field">
+                  <Input
+                    ref={password}
+                    label="Password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="At least 6 characters"
+                    autoComplete={isSignedInForm ? "current-password" : "new-password"}
+                    className="pr-12"
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-3 top-[34px] text-[var(--app-text-muted)] hover:text-[var(--app-text)] transition-colors p-1 rounded-lg"
+                  className="login-eye-btn absolute right-3 top-[34px] text-[var(--app-text-muted)] hover:text-[var(--app-text)] transition-colors p-1 rounded-lg"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
@@ -198,7 +205,7 @@ const Login = () => {
               {errMessage && (
                 <div
                   role="alert"
-                  className={`text-sm px-3.5 py-2.5 rounded-xl border ${
+                  className={`login-alert text-sm px-3.5 py-2.5 rounded-xl border ${
                     errMessage.includes("successfully")
                       ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300"
                       : "bg-red-50 border-red-200 text-red-600 dark:bg-red-950/40 dark:border-red-800 dark:text-red-400"
@@ -208,29 +215,29 @@ const Login = () => {
                 </div>
               )}
 
-              <Button type="submit" className="w-full !min-h-[48px]" loading={loading} disabled={loading}>
+              <Button type="submit" className="login-submit-btn w-full !min-h-[48px]" loading={loading} disabled={loading}>
                 {!loading && isSignedInForm ? "Sign in" : !loading ? "Create account" : null}
               </Button>
             </form>
 
-            <p className="mt-5 text-center text-sm text-[var(--app-text-muted)]">
+            <p className="login-toggle-text mt-5 text-center text-sm text-[var(--app-text-muted)]">
               {isSignedInForm ? "Don't have an account?" : "Already have an account?"}{" "}
               <button
                 type="button"
                 onClick={toggleForm}
-                className="font-semibold text-[var(--app-primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-primary)]/40 rounded"
+                className="login-toggle-link font-semibold text-[var(--app-primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-primary)]/40 rounded"
               >
                 {isSignedInForm ? "Sign up" : "Sign in"}
               </button>
             </p>
           </div>
 
-          {/* Mobile feature pills */}
-          <div className="md:hidden mt-5 flex flex-wrap gap-2 justify-center">
+          {/* Mobile feature pills — hidden on md+ */}
+          <div className="login-features md:hidden mt-5 flex flex-wrap gap-2 justify-center">
             {features.map(({ icon: Icon, text }) => (
               <span
                 key={text}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-[var(--app-surface)] border border-[var(--app-border)] text-[var(--app-text-muted)]"
+                className="login-feature-pill inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-[var(--app-surface)] border border-[var(--app-border)] text-[var(--app-text-muted)]"
               >
                 <Icon size={13} className="text-[var(--app-primary)]" />
                 {text}
