@@ -440,55 +440,6 @@ const registerFeatureRoutes = (app, userAuth) => {
     }
   });
 
-  /* ================= BULK TRANSACTION OPS ================= */
-  app.delete("/transactions/bulk", userAuth, async (req, res) => {
-    try {
-      const { ids } = req.body;
-      if (!Array.isArray(ids) || !ids.length) {
-        return res.status(400).json({ error: "ids array required" });
-      }
-      const txns = await Transaction.find({ _id: { $in: ids }, user_id: req.userId });
-      const accountIds = [...new Set(txns.map((t) => t.account_id.toString()))];
-      await Transaction.deleteMany({ _id: { $in: ids }, user_id: req.userId });
-      for (const accountId of accountIds) {
-        await recalculateAccountBalance({ userId: req.userId, accountId });
-      }
-      res.json({ message: `${txns.length} transactions deleted` });
-    } catch (err) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  app.patch("/transactions/bulk-category", userAuth, async (req, res) => {
-    try {
-      const { ids, category_id } = req.body;
-      if (!Array.isArray(ids) || !category_id) {
-        return res.status(400).json({ error: "ids and category_id required" });
-      }
-      const category = await Category.findOne({
-        _id: category_id,
-        $or: [{ userId: req.userId }, { isDefault: true }],
-      });
-      if (!category) return res.status(404).json({ error: "Category not found" });
-
-      await Transaction.updateMany(
-        { _id: { $in: ids }, user_id: req.userId, type: category.type },
-        { $set: { category_id } }
-      );
-
-      if (category.type === "expense") {
-        checkBudgetAlerts({
-          userId: req.userId,
-          categoryIds: [category_id],
-          transactionDate: new Date(),
-        }).catch((err) => console.error("Budget alert check failed:", err.message));
-      }
-
-      res.json({ message: "Categories updated" });
-    } catch (err) {
-      res.status(400).json({ error: err.message });
-    }
-  });
 };
 
 module.exports = { registerFeatureRoutes };

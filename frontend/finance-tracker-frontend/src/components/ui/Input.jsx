@@ -3,7 +3,7 @@ import React from "react";
 const fieldClass =
   "w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-input-bg)] px-4 py-3 text-sm text-[var(--app-text)] shadow-sm transition focus:border-[var(--app-primary)] focus:ring-2 focus:ring-[var(--app-primary)]/20 outline-none disabled:opacity-60";
 
-export const Input = ({ label, error, hint, id, className = "", ...props }) => {
+export const Input = React.forwardRef(({ label, error, hint, id, className = "", ...props }, ref) => {
   const inputId = id || label?.toLowerCase().replace(/\s+/g, "-");
   return (
     <div className="flex flex-col gap-1.5">
@@ -12,7 +12,7 @@ export const Input = ({ label, error, hint, id, className = "", ...props }) => {
           {label}
         </label>
       ) : null}
-      <input id={inputId} className={`${fieldClass} ${className}`} aria-invalid={!!error} {...props} />
+      <input ref={ref} id={inputId} className={`${fieldClass} ${className}`} aria-invalid={!!error} {...props} />
       {error ? (
         <p className="text-xs text-[var(--app-danger)]" role="alert">{error}</p>
       ) : hint ? (
@@ -20,7 +20,8 @@ export const Input = ({ label, error, hint, id, className = "", ...props }) => {
       ) : null}
     </div>
   );
-};
+});
+Input.displayName = "Input";
 
 export const Select = ({ label, error, id, children, className = "", ...props }) => {
   const selectId = id || label?.toLowerCase().replace(/\s+/g, "-");

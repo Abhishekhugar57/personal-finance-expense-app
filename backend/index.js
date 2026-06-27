@@ -518,41 +518,73 @@ app.post("/transactions", userAuth, async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
+const parseLocalDateStart = (dateStr) => {
+  const [y, m, d] = String(dateStr).split("-").map(Number);
+  return new Date(y, m - 1, d, 0, 0, 0, 0);
+};
+
+const parseLocalDateEnd = (dateStr) => {
+  const [y, m, d] = String(dateStr).split("-").map(Number);
+  return new Date(y, m - 1, d, 23, 59, 59, 999);
+};
+
+const buildTransactionFilter = async (userId, query) => {
+  const { type, category, search, dateFrom, dateTo, minAmount, maxAmount } = query;
+  const filter = { user_id: userId };
+
+  if (type && type !== "all") filter.type = type;
+  if (category) filter.category_id = category;
+  if (dateFrom || dateTo) {
+    filter.transaction_date = {};
+    if (dateFrom) filter.transaction_date.$gte = parseLocalDateStart(dateFrom);
+    if (dateTo) filter.transaction_date.$lte = parseLocalDateEnd(dateTo);
+  }
+  if (minAmount || maxAmount) {
+    filter.amount = {};
+    if (minAmount) filter.amount.$gte = Number(minAmount);
+    if (maxAmount) filter.amount.$lte = Number(maxAmount);
+  }
+
+  if (search && String(search).trim()) {
+    const q = String(search).trim();
+    const matchingCategories = await Category.find({
+      name: { $regex: q, $options: "i" },
+      $or: [{ userId }, { isDefault: true }],
+    }).select("_id");
+    filter.$or = [
+      { note: { $regex: q, $options: "i" } },
+      { category_id: { $in: matchingCategories.map((c) => c._id) } },
+    ];
+  }
+
+  return filter;
+};
+
+const computeTransactionSummary = async (filter) => {
+  const results = await Transaction.aggregate([
+    { $match: filter },
+    { $group: { _id: "$type", total: { $sum: "$amount" } } },
+  ]);
+  let income = 0;
+  let expense = 0;
+  for (const row of results) {
+    if (row._id === "income") income = row.total;
+    else if (row._id === "expense") expense = row.total;
+  }
+  return { income, expense, balance: income - expense };
+};
+
 /* ================= GET ALL TRANSACTIONS ================= */
 app.get("/transactions", userAuth, async (req, res) => {
   try {
     const {
       page = 1,
       limit = 10,
-      type,
-      category,
-      search,
       sort = "date_desc",
-      dateFrom,
-      dateTo,
-      minAmount,
-      maxAmount,
       export: exportAll,
     } = req.query;
 
-    const filter = { user_id: req.userId };
-
-    if (type && type !== "all") filter.type = type;
-    if (category) filter.category_id = category;
-    if (dateFrom || dateTo) {
-      filter.transaction_date = {};
-      if (dateFrom) filter.transaction_date.$gte = new Date(dateFrom);
-      if (dateTo) {
-        const end = new Date(dateTo);
-        end.setHours(23, 59, 59, 999);
-        filter.transaction_date.$lte = end;
-      }
-    }
-    if (minAmount || maxAmount) {
-      filter.amount = {};
-      if (minAmount) filter.amount.$gte = Number(minAmount);
-      if (maxAmount) filter.amount.$lte = Number(maxAmount);
-    }
+    const filter = await buildTransactionFilter(req.userId, req.query);
 
     const sortMap = {
       date_desc: { transaction_date: -1 },
@@ -561,37 +593,30 @@ app.get("/transactions", userAuth, async (req, res) => {
       amount_asc: { amount: 1 },
     };
 
-    let query = Transaction.find(filter)
+    const query = Transaction.find(filter)
       .populate("category_id", "name type")
       .sort(sortMap[sort] || sortMap.date_desc);
-
-    if (search) {
-      const all = await Transaction.find(filter)
-        .populate("category_id", "name type")
-        .sort(sortMap[sort] || sortMap.date_desc);
-      const q = String(search).toLowerCase();
-      const filtered = all.filter(
-        (t) =>
-          String(t.note || "").toLowerCase().includes(q) ||
-          String(t.category_id?.name || "").toLowerCase().includes(q)
-      );
-      if (exportAll === "true") return res.json(filtered);
-      const total = filtered.length;
-      const paged = filtered.slice((page - 1) * limit, page * limit);
-      return res.json({ data: paged, total, page: Number(page), limit: Number(limit) });
-    }
 
     if (exportAll === "true") {
       const all = await query;
       return res.json(all);
     }
 
-    const total = await Transaction.countDocuments(filter);
-    const transactions = await query
-      .skip((page - 1) * limit)
-      .limit(Number(limit));
+    const [total, transactions, summary] = await Promise.all([
+      Transaction.countDocuments(filter),
+      query
+        .skip((Number(page) - 1) * Number(limit))
+        .limit(Number(limit)),
+      computeTransactionSummary(filter),
+    ]);
 
-    res.json({ data: transactions, total, page: Number(page), limit: Number(limit) });
+    res.json({
+      data: transactions,
+      total,
+      page: Number(page),
+      limit: Number(limit),
+      summary,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -731,6 +756,56 @@ app.put("/transactions/:id", userAuth, async (req, res) => {
     }
 
     return res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/* ================= BULK TRANSACTION OPS ================= */
+app.delete("/transactions/bulk", userAuth, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || !ids.length) {
+      return res.status(400).json({ error: "ids array required" });
+    }
+    const txns = await Transaction.find({ _id: { $in: ids }, user_id: req.userId });
+    const accountIds = [...new Set(txns.map((t) => t.account_id.toString()))];
+    await Transaction.deleteMany({ _id: { $in: ids }, user_id: req.userId });
+    for (const accountId of accountIds) {
+      await recalculateAccountBalance({ userId: req.userId, accountId });
+    }
+    res.json({ message: `${txns.length} transactions deleted` });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.patch("/transactions/bulk-category", userAuth, async (req, res) => {
+  try {
+    const { ids, category_id } = req.body;
+    if (!Array.isArray(ids) || !category_id) {
+      return res.status(400).json({ error: "ids and category_id required" });
+    }
+    const category = await Category.findOne({
+      _id: category_id,
+      $or: [{ userId: req.userId }, { isDefault: true }],
+    });
+    if (!category) return res.status(404).json({ error: "Category not found" });
+
+    await Transaction.updateMany(
+      { _id: { $in: ids }, user_id: req.userId, type: category.type },
+      { $set: { category_id } }
+    );
+
+    if (category.type === "expense") {
+      checkBudgetAlerts({
+        userId: req.userId,
+        categoryIds: [category_id],
+        transactionDate: new Date(),
+      }).catch((err) => console.error("Budget alert check failed:", err.message));
+    }
+
+    res.json({ message: "Categories updated" });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

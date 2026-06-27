@@ -25,10 +25,11 @@ export const Button = ({
   className = "",
   loading = false,
   disabled,
+  type = "button",
   ...props
 }) => (
   <button
-    type="button"
+    type={type}
     disabled={disabled || loading}
     className={[
       "inline-flex items-center justify-center gap-2 font-semibold transition-all duration-200",

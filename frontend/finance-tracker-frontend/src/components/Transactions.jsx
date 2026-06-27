@@ -135,10 +135,12 @@ const EditTransactionModal = ({ open, onClose, editTransaction, categories, cate
 const Transactions = () => {
   const [transactions, setTransactions] = useState([]);
   const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState({ income: 0, expense: 0, balance: 0 });
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [filterType, setFilterType] = useState("all");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [minAmount, setMinAmount] = useState("");
@@ -164,41 +166,31 @@ const Transactions = () => {
   const isLoanTxn = (txn) =>
     Boolean(txn?.linkedLoanId) || String(txn?.category_id?.name || "").toLowerCase() === "loan";
 
-  const totals = useMemo(() => {
-    const income = transactions.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount || 0), 0);
-    const expense = transactions.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount || 0), 0);
-    return { income, expense, balance: income - expense };
-  }, [transactions]);
+  const filterCategories = useMemo(() => {
+    if (filterType === "all") return categories;
+    return categories.filter((c) => c.type === filterType);
+  }, [categories, filterType]);
 
-  const fetchTransactions = useCallback(async () => {
-    try {
-      setLoading(true);
-      const params = { page, limit, sort };
-      if (filterType !== "all") params.type = filterType;
-      if (search) params.search = search;
-      if (dateFrom) params.dateFrom = dateFrom;
-      if (dateTo) params.dateTo = dateTo;
-      if (minAmount) params.minAmount = minAmount;
-      if (maxAmount) params.maxAmount = maxAmount;
-      if (categoryFilter) params.category = categoryFilter;
+  const buildFilterParams = useCallback((extra = {}) => {
+    const params = { sort, ...extra };
+    if (filterType !== "all") params.type = filterType;
+    if (debouncedSearch) params.search = debouncedSearch;
+    if (dateFrom) params.dateFrom = dateFrom;
+    if (dateTo) params.dateTo = dateTo;
+    if (minAmount) params.minAmount = minAmount;
+    if (maxAmount) params.maxAmount = maxAmount;
+    if (categoryFilter) params.category = categoryFilter;
+    return params;
+  }, [filterType, debouncedSearch, dateFrom, dateTo, minAmount, maxAmount, categoryFilter, sort]);
 
-      const res = await api.get("/transactions", { params });
-      const payload = res.data;
-      if (Array.isArray(payload)) {
-        setTransactions(payload);
-        setTotal(payload.length);
-      } else {
-        setTransactions(payload.data || []);
-        setTotal(payload.total || 0);
-      }
-    } catch {
-      toast.error("Failed to load transactions");
-    } finally {
-      setLoading(false);
-    }
-  }, [page, filterType, search, dateFrom, dateTo, minAmount, maxAmount, categoryFilter, sort]);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
-  useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
   const fetchCategories = async () => {
     try {
@@ -212,10 +204,39 @@ const Transactions = () => {
     }
   };
 
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const fetchTransactions = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = buildFilterParams({ page, limit });
+
+      const res = await api.get("/transactions", { params });
+      const payload = res.data;
+      if (Array.isArray(payload)) {
+        setTransactions(payload);
+        setTotal(payload.length);
+        const income = payload.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount || 0), 0);
+        const expense = payload.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount || 0), 0);
+        setSummary({ income, expense, balance: income - expense });
+      } else {
+        setTransactions(payload.data || []);
+        setTotal(payload.total || 0);
+        setSummary(payload.summary || { income: 0, expense: 0, balance: 0 });
+      }
+    } catch {
+      toast.error("Failed to load transactions");
+    } finally {
+      setLoading(false);
+    }
+  }, [page, buildFilterParams]);
+
+  useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
+
   const fetchAllForExport = async () => {
-    const params = { export: "true", sort };
-    if (filterType !== "all") params.type = filterType;
-    if (search) params.search = search;
+    const params = buildFilterParams({ export: "true" });
     const res = await api.get("/transactions", { params });
     return Array.isArray(res.data) ? res.data : res.data?.data || [];
   };
@@ -313,9 +334,9 @@ const Transactions = () => {
       <Card>
         <div className="grid grid-cols-3 gap-3 mb-4">
           {[
-            { label: "Income", value: formatINR(totals.income), color: "text-emerald-600" },
-            { label: "Expense", value: formatINR(totals.expense), color: "text-red-500" },
-            { label: "Balance", value: formatINR(totals.balance), color: "text-[var(--app-text)]" },
+            { label: "Income", value: formatINR(summary.income), color: "text-emerald-600" },
+            { label: "Expense", value: formatINR(summary.expense), color: "text-red-500" },
+            { label: "Balance", value: formatINR(summary.balance), color: "text-[var(--app-text)]" },
           ].map((s) => (
             <div key={s.label} className="text-center p-2 rounded-xl bg-[var(--app-bg)]">
               <p className="text-[10px] text-[var(--app-text-muted)]">{s.label}</p>
@@ -331,7 +352,7 @@ const Transactions = () => {
               type="search"
               placeholder="Search notes, categories..."
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-[var(--app-border)] bg-[var(--app-input-bg)] text-sm"
             />
           </div>
@@ -344,22 +365,22 @@ const Transactions = () => {
             <Input label="To" type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} />
             <Input label="Min ₹" type="number" value={minAmount} onChange={(e) => { setMinAmount(e.target.value); setPage(1); }} />
             <Input label="Max ₹" type="number" value={maxAmount} onChange={(e) => { setMaxAmount(e.target.value); setPage(1); }} />
-            <Select label="Sort" value={sort} onChange={(e) => setSort(e.target.value)}>
+            <Select label="Sort" value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }}>
               <option value="date_desc">Newest first</option>
               <option value="date_asc">Oldest first</option>
               <option value="amount_desc">Highest amount</option>
               <option value="amount_asc">Lowest amount</option>
             </Select>
-            <Select label="Category" value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}>
-              <option value="">All categories</option>
-              {categories.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+            <Select label="Category" value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }} disabled={categoriesLoading}>
+              <option value="">{categoriesLoading ? "Loading..." : "All categories"}</option>
+              {filterCategories.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
             </Select>
           </div>
         ) : null}
 
         <div className="mt-3 flex flex-wrap gap-2 items-center">
           {["all", "income", "expense"].map((f) => (
-            <Pill key={f} active={filterType === f} onClick={() => { setFilterType(f); setPage(1); }}>
+            <Pill key={f} active={filterType === f} onClick={() => { setFilterType(f); setCategoryFilter(""); setPage(1); }}>
               {f.charAt(0).toUpperCase() + f.slice(1)}
             </Pill>
           ))}
